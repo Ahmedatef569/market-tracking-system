@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Market Tracking System | Admin</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" sizes="192x192" href="assets/main_192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="assets/main_512.png">
+    <link rel="icon" type="image/svg+xml" href="assets/main.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="vendor/tabulator/tabulator_midnight.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+    <div class="app-shell" data-role="admin">
+        <button class="toggle-sidebar toggle-sidebar-mobile" id="btnToggleSidebar" aria-label="Toggle menu">
+            <i class="bi bi-list"></i>
+        </button>
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <img src="assets/logo_small.png" alt="Logo" class="logo">
+                <h1>Market Tracking</h1>
+            </div>
+            <button class="toggle-sidebar toggle-sidebar-desktop" id="btnToggleSidebarDesktop" aria-label="Toggle menu">
+                <i class="bi bi-list"></i>
+            </button>
+            <nav>
+                <a href="#" class="nav-link active" data-section-target="employees">
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                    </span>
+                    <span class="text">Employees</span>
+                </a>
+                <a href="#" class="nav-link" data-section-target="database">
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                            <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"></path>
+                            <path d="M3 18c0 1.66 4 3 9 3s9-1.34 9-3"></path>
+                        </svg>
+                    </span>
+                    <span class="text">Database</span>
+                </a>
+                <a href="#" class="nav-link" data-section-target="cases">
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path>
+                            <path d="M14 2v6h6"></path>
+                            <path d="M16 13H8"></path>
+                            <path d="M16 17H8"></path>
+                            <path d="M10 9H8"></path>
+                        </svg>
+                    </span>
+                    <span class="text">Cases</span>
+                </a>
+                <a href="#" class="nav-link" data-section-target="approvals">
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                            <path d="M12 22c4.5-1 8-5 8-10V5l-8-3-8 3v7c0 5 3.5 9 8 10Z"></path>
+                            <path d="m9 12 2 2 4-4"></path>
+                        </svg>
+                    </span>
+                    <span class="text">Approvals</span>
+                </a>
+                <a href="#" class="nav-link" data-section-target="dashboard">
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                            <path d="M3 3v18h18"></path>
+                            <path d="M18 17V9"></path>
+                            <path d="M13 17V5"></path>
+                            <path d="M8 17v-3"></path>
+                        </svg>
+                    </span>
+                    <span class="text">Dashboard</span>
+                </a>
+            </nav>
+            <div class="theme-toggle" role="group" aria-label="Toggle color theme">
+                <button class="theme-toggle__button" id="themeToggle" type="button" aria-label="Switch to light mode">
+                    <i class="bi bi-moon-stars-fill theme-toggle__icon" id="themeToggleIcon" aria-hidden="true"></i>
+                </button>
+            </div>
+        </aside>
+        <main class="main-area">
+            <header class="page-header">
+                <div class="brand">
+                    <div class="brand-text">
+                        <div>Market Tracking System</div>
+                        <small class="text-white-50">Admin Control Center</small>
+                    </div>
+                </div>
+                <div class="actions">
+                    <div class="account-chip">
+                        <div>
+                            <div id="account-name">Admin User</div>
+                            <small class="text-white-50" id="account-role">Marketing Manager</small>
+                        </div>
+                    </div>
+                    <button class="icon-button" id="btnNotifications" aria-label="Notifications">
+                        <i class="bi bi-bell"></i>
+                        <span class="pulse d-none" id="notifications-indicator"></span>
+                    </button>
+                    <div class="dropdown">
+                        <button class="icon-button" id="btnSettings" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-gear"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#" id="actionChangePassword">Change Password</a></li>
+                            <li><a class="dropdown-item text-danger" href="#" id="actionLogout">Log out</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </header>
+            <section class="content-area" id="page-content">
+                <section class="page-section" data-section="employees">
+                    <h2 class="section-title">Employees Directory</h2>
+                    <div class="row gy-4">
+                        <div class="col-12 col-xl-4 admin-form-host modal-form-host" data-form-id="employee-form"><div class="form-card"><h3>Add / Edit Employee</h3>
+                                <form id="employee-form" novalidate>
+                                    <div class="row g-3">
+                                        <!-- Form fields injected by admin.js -->
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="col-12"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div class="filters-bar" id="employee-filters"><!-- filters inserted dynamically --></div><button class="btn btn-gradient" data-open-form="#employee-form" data-form-title="Add Employee"><i class="bi bi-plus-circle me-2"></i>Add Employee</button></div><div class="stat-cards stat-cards--quad" id="employee-stat-cards"></div>
+                            <div class="table-wrapper">
+                                <div id="employees-table"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="page-section d-none" data-section="database">
+                    <h2 class="section-title">Company Database</h2>
+                    <div class="tab-nav mb-4" id="database-tabs" role="tablist">
+                        <button type="button" class="active" data-database-tab="products">Products</button>
+                        <button type="button" data-database-tab="doctors">Doctors</button>
+                        <button type="button" data-database-tab="accounts">Accounts</button>
+                    </div>
+                    <div class="database-panel" data-database-tab="products">
+                        <div class="row gy-4">
+                            <div class="col-12 col-xl-4 admin-form-host modal-form-host" data-form-id="product-form"><div class="form-card"><h3>New Product</h3>
+                                    <form id="product-form" novalidate>
+                                        <div class="row g-3"></div>
+                                    </form>
+                                </div>
+                            </div>
+                            <div class="col-12"><div class="d-flex flex-wrap justify-content-end align-items-center gap-2 mb-3">
+                                    <div class="actions-row"><button class="btn btn-gradient" data-open-form="#product-form" data-form-title="Add Product"><i class="bi bi-plus-circle me-2"></i>Add Product</button><button class="btn btn-outline-ghost" id="export-products"><i class="bi bi-download me-2"></i>Export</button>
+                                    </div>
+                                </div>
+                                <div class="stat-cards stat-cards--quad" id="product-stat-cards"></div>
+                                <div class="filters-bar filters-bar--compact" id="product-filters"></div>
+                                <div class="table-wrapper">
+                                    <div id="products-table"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="database-panel d-none" data-database-tab="doctors">
+                        <div class="row gy-4">
+                            <div class="col-12 col-xl-4 admin-form-host modal-form-host" data-form-id="doctor-form"><div class="form-card"><h3>New Doctor</h3>
+                                    <form id="doctor-form" novalidate>
+                                        <div class="row g-3"></div>
+                                    </form>
+                                    <hr class="border-secondary opacity-25">
+                                    <div>
+                                        <label class="form-label">Bulk Upload</label>
+                                        <input type="file" class="form-control" id="doctor-upload" accept=".xlsx,.xls">
+                                        <small class="text-secondary d-block mt-2">Columns: Doctor Name, Product Specialist, Line, Specialty, Phone, Clinic Address</small>
+                                        <button class="btn btn-outline-ghost mt-3" id="upload-doctors"><i class="bi bi-upload me-2"></i>Upload</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12"><div class="d-flex flex-wrap justify-content-end align-items-center gap-2 mb-3">
+                                    <div class="actions-row"><button class="btn btn-gradient" data-open-form="#doctor-form" data-form-title="Add Doctor"><i class="bi bi-plus-circle me-2"></i>Add Doctor</button><button class="btn btn-outline-ghost" id="export-doctors"><i class="bi bi-download me-2"></i>Export</button>
+                                    </div>
+                                </div>
+                                <div class="stat-cards stat-cards--quad" id="doctor-stat-cards"></div>
+                                <div class="filters-bar filters-bar--compact" id="doctor-filters"></div>
+                                <div class="table-wrapper">
+                                    <div id="doctors-table"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="database-panel d-none" data-database-tab="accounts">
+                        <div class="row gy-4">
+                            <div class="col-12 col-xl-4 admin-form-host modal-form-host" data-form-id="account-form"><div class="form-card"><h3>New Account</h3>
+                                    <form id="account-form" novalidate>
+                                        <div class="row g-3"></div>
+                                    </form>
+                                    <hr class="border-secondary opacity-25">
+                                    <div>
+                                        <label class="form-label">Bulk Upload</label>
+                                        <input type="file" class="form-control" id="account-upload" accept=".xlsx,.xls">
+                                        <small class="text-secondary d-block mt-2">Columns: Account Name, Product Specialist, Line, Account Type, Address, Governorate</small>
+                                        <button class="btn btn-outline-ghost mt-3" id="upload-accounts"><i class="bi bi-upload me-2"></i>Upload</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12"><div class="d-flex flex-wrap justify-content-end align-items-center gap-2 mb-3">
+                                    <div class="actions-row"><button class="btn btn-gradient" data-open-form="#account-form" data-form-title="Add Account"><i class="bi bi-plus-circle me-2"></i>Add Account</button><button class="btn btn-outline-ghost" id="export-accounts"><i class="bi bi-download me-2"></i>Export</button>
+                                    </div>
+                                </div>
+                                <div class="stat-cards stat-cards--quad" id="account-stat-cards"></div>
+                                <div class="filters-bar filters-bar--compact" id="account-filters"></div>
+                                <div class="table-wrapper">
+                                    <div id="accounts-table"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="page-section d-none" data-section="cases">
+                    <h2 class="section-title">Cases Report</h2>
+                    <div class="stat-cards stat-cards--wide" id="cases-stat-cards"></div>
+                    <div class="card-glass mb-4 filters-panel collapsed" data-filter-panel="cases">
+                        <div class="filters-panel-header">
+                            <span class="filters-panel-title">Filters</span>
+                            <button class="filters-panel-toggle" type="button" aria-expanded="false" aria-controls="cases-filters-body">
+                                <span class="filters-panel-toggle-label">Show Filters</span>
+                                <span class="filters-panel-toggle-icon">&#9656;</span>
+                            </button>
+                        </div>
+                        <div class="filters-panel-body" id="cases-filters-body">
+                            <div class="filters-bar" id="cases-filters"></div>
+                        </div>
+                    </div>
+                    <div class="table-wrapper">
+                        <div id="cases-table"></div>
+                    </div>
+                </section>
+
+                <section class="page-section d-none" data-section="approvals">
+                    <h2 class="section-title">Approval Center</h2>
+                    <div class="card-glass mb-4">
+                        <div class="filters-bar" id="approvals-filters"></div>
+                    </div>
+                    <div class="table-wrapper">
+                        <div id="approvals-table"></div>
+                    </div>
+                </section>
+
+                <section class="page-section d-none" data-section="dashboard">
+                    <h2 class="section-title">Analytics Dashboard</h2>
+                    <div class="stat-cards stat-cards--wide" id="dashboard-stat-cards"></div>
+                    <div class="card-glass mb-4 filters-panel collapsed" data-filter-panel="dashboard">
+                        <div class="filters-panel-header">
+                            <span class="filters-panel-title">Filters</span>
+                            <button class="filters-panel-toggle" type="button" aria-expanded="false" aria-controls="dashboard-filters-body">
+                                <span class="filters-panel-toggle-label">Show Filters</span>
+                                <span class="filters-panel-toggle-icon">&#9656;</span>
+                            </button>
+                        </div>
+                        <div class="filters-panel-body" id="dashboard-filters-body">
+                            <div class="filters-bar" id="dashboard-filters"></div>
+                        </div>
+                    </div>
+
+                    <!-- Cases Analysis Section -->
+                    <div class="chart-section mb-4">
+                        <div class="chart-section-header">
+                            <h3 class="chart-section-title">Cases Analysis</h3>
+                        </div>
+                        <div class="row g-4" id="dashboard-charts-cases">
+                            <div class="col-12 col-xl-6">
+                                <div class="card-glass chart-card">
+                                    <h3>Number of Cases (Company vs Competitors)</h3>
+                                    <canvas id="chartNumberOfCases" height="240"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <div class="card-glass chart-card">
+                                    <h3>Cases Market Share</h3>
+                                    <canvas id="chartCasesMarketShare" height="240"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <div class="card-glass chart-card">
+                                    <h3>Monthly Cases Trend</h3>
+                                    <canvas id="chartMonthlyTrend" height="240"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <div class="card-glass chart-card">
+                                    <h3>UPA vs Private Cases</h3>
+                                    <canvas id="chartUPAvsPrivate" height="240"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <div class="card-glass chart-card">
+                                    <h3>Company Cases by Product Specialist</h3>
+                                    <canvas id="chartCasesByPS" height="240"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <div class="card-glass chart-card">
+                                    <h3>Company Cases by Product</h3>
+                                    <canvas id="chartCasesByProduct" height="240"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Collapse Button -->
+                    <div class="text-center mb-4">
+                        <button class="btn btn-outline-ghost btn-sm" id="toggleUnitsSection" data-collapsed="false">
+                            <i class="bi bi-chevron-up me-2"></i>Collapse Cases Analysis
+                        </button>
+                    </div>
+
+                    <!-- Units Analysis Section -->
+                    <div class="chart-section" id="unitsSection">
+                        <div class="chart-section-header">
+                            <h3 class="chart-section-title">Units Analysis</h3>
+                        </div>
+                        <div class="row g-4" id="dashboard-charts-units">
+                            <div class="col-12 col-xl-6">
+                                <div class="card-glass chart-card">
+                                    <h3>Units Market Share</h3>
+                                    <canvas id="chartUnitsMarketShare" height="240"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <div class="card-glass chart-card">
+                                    <h3>Units per Category</h3>
+                                    <canvas id="chartUnitsPerCategory" height="240"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <div class="card-glass chart-card">
+                                    <h3>Units per Company</h3>
+                                    <canvas id="chartUnitsPerCompany" height="240"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <div class="card-glass chart-card">
+                                    <h3>Monthly Units Trend</h3>
+                                    <canvas id="chartMonthlyUnitsTrend" height="240"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <div class="card-glass chart-card">
+                                    <h3>Units per Product Specialist</h3>
+                                    <canvas id="chartUnitsPerPS" height="240"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <div class="card-glass chart-card">
+                                    <h3>Units per Product</h3>
+                                    <canvas id="chartUnitsPerProduct" height="240"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </section>
+        </main>
+    </div>
+
+    <div class="modal fade" id="modalPassword" tabindex="-1" aria-labelledby="modalPasswordLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h1 class="modal-title fs-5" id="modalPasswordLabel">Change Password</h1>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="change-password-form" class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label" for="current-password">Current Password</label>
+                            <input type="password" class="form-control" id="current-password" autocomplete="current-password">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="new-password">New Password</label>
+                            <input type="password" class="form-control" id="new-password" autocomplete="new-password">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="confirm-password">Confirm Password</label>
+                            <input type="password" class="form-control" id="confirm-password" autocomplete="new-password">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-ghost" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-gradient" id="save-password-btn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="offcanvas offcanvas-end text-bg-dark" tabindex="-1" id="offcanvasNotifications" aria-labelledby="offcanvasNotificationsLabel">
+        <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="offcanvasNotificationsLabel">Notifications</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body" id="notifications-container">
+            <!-- notifications will be injected -->
+        </div>
+        <div class="offcanvas-footer p-3 border-top border-secondary">
+            <button class="btn btn-outline-ghost w-100" id="mark-notifications-read">Mark all as read</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+    <script src="vendor/tabulator/tabulator.min.js" data-tabulator-loader="true"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+    <script type="module" src="js/admin.js"></script>
+<div class="modal fade" id="modalEntityForm" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content bg-dark text-light">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title" id="modalEntityFormTitle">Add</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="modalEntityFormBody"></div>
+      <div class="modal-footer border-secondary">
+        <button type="button" class="btn btn-outline-ghost" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
