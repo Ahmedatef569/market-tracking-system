@@ -803,23 +803,26 @@ export function calculateUnitsMarketShare(cases = [], caseProductsMap = new Map(
 }
 
 /**
- * Calculate UPA vs Private cases
+ * Calculate cases per account type (Private, UPA, Military)
  */
 export function calculateUPAvsPrivateCases(cases = []) {
-    let upaCount = 0;
     let privateCount = 0;
+    let upaCount = 0;
+    let militaryCount = 0;
 
     cases.forEach((caseItem) => {
-        if (caseItem.account_type === 'UPA') {
-            upaCount += 1;
-        } else if (caseItem.account_type === 'Private') {
+        if (caseItem.account_type === 'Private') {
             privateCount += 1;
+        } else if (caseItem.account_type === 'UPA') {
+            upaCount += 1;
+        } else if (caseItem.account_type === 'Military') {
+            militaryCount += 1;
         }
     });
 
     return {
-        labels: ['UPA Cases', 'Private Cases'],
-        data: [upaCount, privateCount]
+        labels: ['Private Cases', 'UPA Cases', 'Military Cases'],
+        data: [privateCount, upaCount, militaryCount]
     };
 }
 

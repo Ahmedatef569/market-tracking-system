@@ -11,7 +11,7 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-    CREATE TYPE account_type AS ENUM ('Private','UPA');
+    CREATE TYPE account_type AS ENUM ('Private','UPA','Military');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 

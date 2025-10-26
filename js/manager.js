@@ -1627,29 +1627,24 @@ function renderTeamAccountStats(accounts) {
     if (!container) return;
     const approvedAccounts = accounts.filter((account) => account.status === APPROVAL_STATUS.APPROVED);
     const approved = approvedAccounts.length;
-    const pending = accounts.filter(
-        (account) => account.status === APPROVAL_STATUS.PENDING_MANAGER || account.status === APPROVAL_STATUS.PENDING_ADMIN
-    ).length;
-    const privateCount = approvedAccounts.filter((account) => account.account_type === 'Private').length;
-    const upaCount = approvedAccounts.filter((account) => account.account_type === 'UPA').length;
+
+    // Generate stat cards for each account type dynamically
+    const accountTypeCards = ACCOUNT_TYPES.map(type => {
+        const count = approvedAccounts.filter((account) => account.account_type === type).length;
+        return `
+            <div class="stat-card">
+                <h4>${type}</h4>
+                <div class="value">${formatNumber(count)}</div>
+            </div>
+        `;
+    }).join('');
 
     container.innerHTML = `
         <div class="stat-card">
             <h4>Approved Accounts</h4>
             <div class="value">${formatNumber(approved)}</div>
         </div>
-        <div class="stat-card">
-            <h4>Pending</h4>
-            <div class="value">${formatNumber(pending)}</div>
-        </div>
-        <div class="stat-card">
-            <h4>Private</h4>
-            <div class="value">${formatNumber(privateCount)}</div>
-        </div>
-        <div class="stat-card">
-            <h4>UPA</h4>
-            <div class="value">${formatNumber(upaCount)}</div>
-        </div>
+        ${accountTypeCards}
     `;
 }
 
@@ -5121,7 +5116,7 @@ function renderUPAvsPrivateCasesChart(cases) {
     state.charts.upaVsPrivate = buildPieChart(canvas, {
         labels,
         data,
-        backgroundColor: ['rgba(99,102,241,0.9)', 'rgba(236,72,153,0.9)']
+        backgroundColor: ['rgba(99,102,241,0.9)', 'rgba(236,72,153,0.9)', 'rgba(34,197,94,0.9)']
     });
 }
 

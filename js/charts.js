@@ -224,6 +224,17 @@ export function buildDoughnutChart(canvas, { labels = [], data = [], backgroundC
                         usePointStyle: true,
                         pointStyle: 'circle'
                     }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            const total = context.dataset.data.reduce((acc, val) => acc + val, 0);
+                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                            return `${label}: ${value} (${percentage}%)`;
+                        }
+                    }
                 }
             },
             ...options
@@ -257,6 +268,17 @@ export function buildPieChart(canvas, { labels = [], data = [], backgroundColor 
                         padding: 15,
                         usePointStyle: true,
                         pointStyle: 'circle'
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            const total = context.dataset.data.reduce((acc, val) => acc + val, 0);
+                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                            return `${label}: ${value} (${percentage}%)`;
+                        }
                     }
                 }
             },

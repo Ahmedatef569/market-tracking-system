@@ -11,7 +11,7 @@ export const APPROVAL_STATUS = Object.freeze({
     REJECTED: 'rejected'
 });
 
-export const ACCOUNT_TYPES = ['Private', 'UPA'];
+export const ACCOUNT_TYPES = ['Private', 'UPA', 'Military'];
 
 export const ENTITY_TYPES = Object.freeze({
     DOCTOR: 'doctor',
