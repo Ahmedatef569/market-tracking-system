@@ -17,7 +17,9 @@ import {
     readExcelFile,
     initThemeToggle,
     ensureThemeApplied,
-    makeSelectSearchable
+    makeSelectSearchable,
+    addEnglishOnlyValidation,
+    validateFormEnglishOnly
 } from './utils.js';
 import { createTable, tableFormatters, bindTableActions, exportTableToExcel, ensureTabulator } from './tables.js';
 import { applyChartDefaults, resetChartDefaults, buildLineChart, buildBarChart, buildDoughnutChart, buildPieChart, destroyChart } from './charts.js';
@@ -440,7 +442,7 @@ async function loadDoctors() {
         supabase
             .from('doctors')
             .select(
-                'id, name, specialty, phone, clinic_address, owner_employee_id, secondary_employee_id, tertiary_employee_id, quaternary_employee_id, quinary_employee_id, line_id, secondary_line_id, tertiary_line_id, quaternary_line_id, quinary_line_id, line:line_id(name), secondary_line:secondary_line_id(name), tertiary_line:tertiary_line_id(name), quaternary_line:quaternary_line_id(name), quinary_line:quinary_line_id(name), status, created_at, updated_at'
+                'id, name, specialty, phone, email_address, owner_employee_id, secondary_employee_id, tertiary_employee_id, quaternary_employee_id, quinary_employee_id, line_id, secondary_line_id, tertiary_line_id, quaternary_line_id, quinary_line_id, line:line_id(name), secondary_line:secondary_line_id(name), tertiary_line:tertiary_line_id(name), quaternary_line:quaternary_line_id(name), quinary_line:quinary_line_id(name), status, created_at, updated_at'
             )
             .neq('status', APPROVAL_STATUS.REJECTED)
             .order('name', { ascending: true }),
@@ -1466,8 +1468,8 @@ function setupDoctorForm() {
             <input type="tel" class="form-control" name="phone">
         </div>
         <div class="col-12">
-            <label class="form-label">Clinic Address</label>
-            <textarea class="form-control" name="clinic_address" rows="2"></textarea>
+            <label class="form-label">Email Address</label>
+            <input type="email" class="form-control" name="email_address" placeholder="doctor@example.com">
         </div>
         <div class="col-12 d-flex justify-content-end gap-2">
             <button type="button" class="btn btn-outline-ghost" id="reset-doctor-form">Reset</button>
@@ -1618,6 +1620,10 @@ function setupDoctorForm() {
         toggleDoctorQuinary(false);
         hideAlert(feedback);
     };
+
+    // Add English-only validation to all text inputs
+    addEnglishOnlyValidation(form);
+
     form.addEventListener('submit', handleDoctorSubmit);
     form.addEventListener('mts:form-open', (event) => {
         const mode = event.detail?.mode || 'create';
@@ -1682,6 +1688,12 @@ async function handleDoctorSubmit(event) {
     const trimmedName = payload.name ? payload.name.trim() : '';
     if (!trimmedName || !payload.owner_id || !payload.line_name) {
         showAlert(feedback, 'Please fill required doctor fields.');
+        return;
+    }
+
+    // Validate English-only input
+    if (!validateFormEnglishOnly(form)) {
+        showAlert(feedback, 'Only English characters are allowed in all fields.');
         return;
     }
 
@@ -1770,7 +1782,7 @@ async function handleDoctorSubmit(event) {
             name: trimmedName,
             specialty: payload.specialty?.trim() || null,
             phone: payload.phone?.trim() || null,
-            clinic_address: payload.clinic_address?.trim() || null,
+            email_address: payload.email_address?.trim() || null,
             owner_employee_id: payload.owner_id,
             secondary_employee_id: secondaryId,
             tertiary_employee_id: tertiaryId,
@@ -2052,7 +2064,7 @@ function populateDoctorForm(id, options = {}) {
     form.quinary_line_name.value = doctor.quinary_line_name || '';
     form.specialty.value = doctor.specialty || '';
     form.phone.value = doctor.phone || '';
-    form.clinic_address.value = doctor.clinic_address || '';
+    form.email_address.value = doctor.email_address || '';
     const mode = options.readonly ? 'review' : 'edit';
     openFormModal('#doctor-form', {
         title: options.readonly ? 'Review Doctor' : 'Edit Doctor',
@@ -2211,6 +2223,10 @@ function setupAccountForm() {
         toggleAccountTertiary(false);
         hideAlert(feedback);
     };
+
+    // Add English-only validation to all text inputs
+    addEnglishOnlyValidation(form);
+
     form.addEventListener('submit', handleAccountSubmit);
     form.addEventListener('mts:form-open', (event) => {
         const mode = event.detail?.mode || 'create';
@@ -2261,6 +2277,12 @@ async function handleAccountSubmit(event) {
     const trimmedName = payload.name ? payload.name.trim() : '';
     if (!trimmedName || !payload.owner_id || !payload.account_type || !payload.line_name) {
         showAlert(feedback, 'Please complete account details.');
+        return;
+    }
+
+    // Validate English-only input
+    if (!validateFormEnglishOnly(form)) {
+        showAlert(feedback, 'Only English characters are allowed in all fields.');
         return;
     }
 
@@ -5156,7 +5178,7 @@ function setupDoctorBulkUpload() {
                             line_id: lineId,
                             specialty: (row['Specialty'] || '').trim() || null,
                             phone: (row['Phone'] || '').trim() || null,
-                            clinic_address: (row['Clinic Address'] || '').trim() || null,
+                            email_address: (row['Email Address'] || '').trim() || null,
                             status: APPROVAL_STATUS.APPROVED,
                             admin_id: state.session.employeeId,
                             created_by: state.session.employeeId,

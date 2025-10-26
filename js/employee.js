@@ -17,7 +17,9 @@ import {
     downloadAsExcel,
     initThemeToggle,
     ensureThemeApplied,
-    makeSelectSearchable
+    makeSelectSearchable,
+    addEnglishOnlyValidation,
+    validateFormEnglishOnly
 } from './utils.js';
 import { createTable, tableFormatters, bindTableActions, ensureTabulator } from './tables.js';
 import { applyChartDefaults, resetChartDefaults, buildLineChart, buildBarChart, buildDoughnutChart, buildPieChart, destroyChart } from './charts.js';
@@ -679,7 +681,7 @@ function setupExportButtons() {
             tertiary_line_name: 'PS 3 Line',
             specialty: 'Specialty',
             phone: 'Phone',
-            clinic_address: 'Clinic Address',
+            email_address: 'Email Address',
             status: 'Status',
             created_at: 'Created On'
         });
@@ -2779,8 +2781,8 @@ function setupDoctorForm() {
             <input type="tel" class="form-control" name="phone">
         </div>
         <div class="col-12">
-            <label class="form-label">Clinic Address</label>
-            <textarea class="form-control" name="clinic_address" rows="2"></textarea>
+            <label class="form-label">Email Address</label>
+            <input type="email" class="form-control" name="email_address" placeholder="doctor@example.com">
         </div>
         <div class="col-12 d-flex justify-content-end gap-2">
             <button type="button" class="btn btn-outline-ghost" id="ps-doctor-reset">Reset</button>
@@ -2790,6 +2792,10 @@ function setupDoctorForm() {
 
     const form = document.getElementById('ps-doctor-form');
     const feedback = document.getElementById('ps-doctor-feedback');
+
+    // Add English-only validation to all text inputs
+    addEnglishOnlyValidation(form);
+
     const resetDoctorForm = () => {
         form.reset();
         hideAlert(feedback);
@@ -2821,6 +2827,12 @@ async function handleDoctorSubmit(event) {
         return;
     }
 
+    // Validate English-only input
+    if (!validateFormEnglishOnly(form)) {
+        showAlert(feedback, 'Only English characters are allowed in all fields.');
+        return;
+    }
+
     try {
         setLoadingState(submitButton, true, 'Submitting...');
         const lineId = payload.line_name ? await ensureLineForSpecialist(payload.line_name.trim()) : state.session.employee?.lineId;
@@ -2833,7 +2845,7 @@ async function handleDoctorSubmit(event) {
                     line_id: lineId,
                     specialty: payload.specialty || null,
                     phone: payload.phone || null,
-                    clinic_address: payload.clinic_address || null,
+                    email_address: payload.email_address || null,
                     status: APPROVAL_STATUS.PENDING_MANAGER,
                     created_by: state.session.employeeId
                 }),
@@ -3070,6 +3082,10 @@ function setupAccountForm() {
 
     const form = document.getElementById('ps-account-form');
     const feedback = document.getElementById('ps-account-feedback');
+
+    // Add English-only validation to all text inputs
+    addEnglishOnlyValidation(form);
+
     const resetAccountForm = () => {
         form.reset();
         hideAlert(feedback);
@@ -3101,7 +3117,13 @@ async function handleAccountSubmit(event) {
         return;
     }
 
-    try {
+    // Validate English-only input
+    if (!validateFormEnglishOnly(form)) {
+        showAlert(feedback, 'Only English characters are allowed in all fields.');
+        return;
+    }
+
+    try{
         setLoadingState(submitButton, true, 'Submitting...');
         const lineId = payload.line_name ? await ensureLineForSpecialist(payload.line_name.trim()) : state.session.employee?.lineId;
         await handleSupabase(
@@ -3418,6 +3440,10 @@ function setupCaseForm() {
 
     const form = document.getElementById('ps-case-form');
     const feedback = document.getElementById('ps-case-feedback');
+
+    // Add English-only validation to all text inputs (including comments field)
+    addEnglishOnlyValidation(form);
+
     const resetCaseForm = () => {
         form.reset();
         state.caseFormRows = 1;
@@ -3541,6 +3567,12 @@ async function handleCaseSubmit(event) {
 
     if (!payload.doctor_id || !payload.account_id || !payload.case_date) {
         showAlert(feedback, 'Doctor, account, and date are required.');
+        return;
+    }
+
+    // Validate English-only input (especially comments field)
+    if (!validateFormEnglishOnly(form)) {
+        showAlert(feedback, 'Only English characters are allowed in all fields including comments.');
         return;
     }
 

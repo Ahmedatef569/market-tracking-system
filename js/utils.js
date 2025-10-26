@@ -45,6 +45,84 @@ export function clearForm(formElement) {
     formElement.querySelectorAll('.is-invalid').forEach((el) => el.classList.remove('is-invalid'));
 }
 
+/**
+ * Validate that text contains only English characters (letters, numbers, spaces, and common punctuation)
+ * Returns true if valid, false if contains Arabic or other non-English characters
+ */
+export function validateEnglishOnly(text) {
+    if (!text || text.trim() === '') return true; // Empty is valid
+    // Allow English letters, numbers, spaces, and common punctuation
+    // Reject Arabic characters (U+0600 to U+06FF) and other non-Latin scripts
+    const englishOnlyPattern = /^[a-zA-Z0-9\s\.,;:!?'"()\-@#$%&*+=/_\[\]{}|\\<>~`]+$/;
+    return englishOnlyPattern.test(text);
+}
+
+/**
+ * Add English-only validation to form inputs
+ * Shows warning message if Arabic or non-English characters are detected
+ */
+export function addEnglishOnlyValidation(formElement) {
+    const inputs = formElement.querySelectorAll('input[type="text"], input[type="email"], textarea');
+
+    inputs.forEach(input => {
+        input.addEventListener('input', function(e) {
+            const value = e.target.value;
+
+            if (!validateEnglishOnly(value)) {
+                e.target.classList.add('is-invalid');
+
+                // Add or update error message
+                let feedback = e.target.nextElementSibling;
+                if (!feedback || !feedback.classList.contains('invalid-feedback')) {
+                    feedback = document.createElement('div');
+                    feedback.className = 'invalid-feedback';
+                    e.target.parentNode.insertBefore(feedback, e.target.nextSibling);
+                }
+                feedback.textContent = 'Only English characters are allowed';
+                feedback.style.display = 'block';
+            } else {
+                e.target.classList.remove('is-invalid');
+
+                // Remove error message
+                const feedback = e.target.nextElementSibling;
+                if (feedback && feedback.classList.contains('invalid-feedback')) {
+                    feedback.style.display = 'none';
+                }
+            }
+        });
+    });
+}
+
+/**
+ * Validate all form inputs for English-only before submission
+ * Returns true if all valid, false if any contain non-English characters
+ */
+export function validateFormEnglishOnly(formElement) {
+    const inputs = formElement.querySelectorAll('input[type="text"], input[type="email"], textarea');
+    let allValid = true;
+
+    inputs.forEach(input => {
+        const value = input.value;
+
+        if (!validateEnglishOnly(value)) {
+            allValid = false;
+            input.classList.add('is-invalid');
+
+            // Add or update error message
+            let feedback = input.nextElementSibling;
+            if (!feedback || !feedback.classList.contains('invalid-feedback')) {
+                feedback = document.createElement('div');
+                feedback.className = 'invalid-feedback';
+                input.parentNode.insertBefore(feedback, input.nextSibling);
+            }
+            feedback.textContent = 'Only English characters are allowed';
+            feedback.style.display = 'block';
+        }
+    });
+
+    return allValid;
+}
+
 export function validateRequiredFields(formElement, requiredSelectors = []) {
     let valid = true;
     requiredSelectors.forEach((selector) => {

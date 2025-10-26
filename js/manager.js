@@ -17,7 +17,9 @@ import {
     downloadAsExcel,
     initThemeToggle,
     ensureThemeApplied,
-    makeSelectSearchable
+    makeSelectSearchable,
+    addEnglishOnlyValidation,
+    validateFormEnglishOnly
 } from './utils.js';
 import { createTable, tableFormatters, bindTableActions, ensureTabulator } from './tables.js';
 import { applyChartDefaults, resetChartDefaults, buildBarChart, buildLineChart, buildDoughnutChart, buildPieChart, destroyChart } from './charts.js';
@@ -3153,8 +3155,8 @@ function setupTeamDoctorForm() {
             <input type="tel" class="form-control" name="phone">
         </div>
         <div class="col-12">
-            <label class="form-label">Clinic Address</label>
-            <textarea class="form-control" name="clinic_address" rows="2"></textarea>
+            <label class="form-label">Email Address</label>
+            <input type="email" class="form-control" name="email_address" placeholder="doctor@example.com">
         </div>
         <div class="col-12 d-flex justify-content-end gap-2">
             <button type="button" class="btn btn-outline-ghost" id="manager-doctor-reset">Reset</button>
@@ -3304,6 +3306,10 @@ function setupTeamDoctorForm() {
         toggleTeamDoctorQuinary(false);
         hideAlert(feedback);
     };
+
+    // Add English-only validation to all text inputs
+    addEnglishOnlyValidation(form);
+
     form.addEventListener('submit', handleTeamDoctorSubmit);
     form.addEventListener('mts:form-open', (event) => {
         const mode = event.detail?.mode || 'create';
@@ -3364,6 +3370,12 @@ async function handleTeamDoctorSubmit(event) {
 
     if (!payload.name || !payload.specialist_id) {
         showAlert(feedback, 'Doctor name and specialist are required.');
+        return;
+    }
+
+    // Validate English-only input
+    if (!validateFormEnglishOnly(form)) {
+        showAlert(feedback, 'Only English characters are allowed in all fields.');
         return;
     }
 
@@ -3460,7 +3472,7 @@ async function handleTeamDoctorSubmit(event) {
             quinary_line_id: quinaryId ? quinaryLineId : null,
             specialty: payload.specialty || null,
             phone: payload.phone || null,
-            clinic_address: payload.clinic_address || null
+            email_address: payload.email_address || null
         };
 
         if (isUpdate) {
@@ -3594,7 +3606,7 @@ function populateTeamDoctorForm(id) {
     form.querySelector('input[name="quinary_line_name"]').value = doctor.quinary_line_name || '';
     form.querySelector('input[name="specialty"]').value = doctor.specialty || '';
     form.querySelector('input[name="phone"]').value = doctor.phone || '';
-    form.querySelector('textarea[name="clinic_address"]').value = doctor.clinic_address || '';
+    form.querySelector('input[name="email_address"]').value = doctor.email_address || '';
 
     openFormModal('#manager-doctor-form', { title: 'Review Doctor', mode: 'edit', focusSelector: 'input[name="name"]' });
 }
