@@ -873,10 +873,13 @@ async function loadLines() {
 }
 
 async function loadProducts() {
+    const managerLineId = state.session.employee?.lineId;
+
     const data = await handleSupabase(
         supabase
             .from('products')
             .select('id, name, category, sub_category, company_id, line_id, is_company_product, company:company_id(name), line:line_id(name)')
+            .eq('line_id', managerLineId)
             .order('name', { ascending: true }),
         'load products'
     );

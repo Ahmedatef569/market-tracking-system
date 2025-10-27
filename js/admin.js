@@ -276,6 +276,9 @@ function initializeForms() {
     setupApprovalsFilters();
     setupDashboardFilters();
     setupExportButtons();
+    setupProductBulkUpload();
+    setupDoctorBulkUpload();
+    setupAccountBulkUpload();
 }
 
 function renderAll() {
@@ -5142,33 +5145,341 @@ function attachProductSpecialistToggle(table, { lineField, toggleFields = [], st
 
     initialize();
 }
-function setupDoctorBulkUpload() {
-    const uploadButton = document.getElementById('upload-doctors');
-    const fileInput = document.getElementById('doctor-upload');
-    if (!uploadButton || !fileInput) return;
-    uploadButton.addEventListener('click', async (event) => {
-        event.preventDefault();
-        if (!fileInput.files.length) {
-            alert('Please select an Excel file first.');
+
+// ============================================================================
+// BULK UPLOAD & TEMPLATE DOWNLOAD FUNCTIONS
+// ============================================================================
+
+function openBulkImportModal(type, config) {
+    const modal = new bootstrap.Modal(document.getElementById('bulkImportModal'));
+    const modalTitle = document.getElementById('bulkImportModalLabel');
+    const modalDescription = document.getElementById('import-modal-description');
+    const downloadBtn = document.getElementById('import-modal-download-btn');
+    const fileInput = document.getElementById('import-modal-file-input');
+    const uploadBtn = document.getElementById('import-modal-upload-btn');
+
+    // Set modal content
+    modalTitle.textContent = config.title;
+    modalDescription.textContent = config.description;
+
+    // Clear previous file selection
+    fileInput.value = '';
+
+    // Remove old event listeners by cloning and replacing
+    const newDownloadBtn = downloadBtn.cloneNode(true);
+    downloadBtn.parentNode.replaceChild(newDownloadBtn, downloadBtn);
+    const newUploadBtn = uploadBtn.cloneNode(true);
+    uploadBtn.parentNode.replaceChild(newUploadBtn, uploadBtn);
+
+    // Add download template handler
+    newDownloadBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        config.downloadTemplate();
+    });
+
+    // Add upload handler
+    newUploadBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const file = fileInput.files[0];
+        if (!file) {
+            alert('Please select a file first.');
             return;
         }
+
+        // Disable button during upload
+        newUploadBtn.disabled = true;
+        newUploadBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Uploading...';
+
         try {
-            const rows = await readExcelFile(fileInput.files[0]);
-            const failures = [];
-            for (const row of rows) {
-                const name = (row['Doctor Name'] || row['Name'] || '').trim();
-                const specialistName = (row['Product Specialist Name'] || row['Product Specialist'] || '').trim();
-                const lineName = (row['Line'] || '').trim();
-                if (!name || !specialistName) {
-                    failures.push({ row, reason: 'Missing doctor or specialist name' });
+            const result = await config.processUpload(file);
+            modal.hide();
+            alert(result.message);
+        } catch (error) {
+            alert(`Upload failed: ${handleError(error)}`);
+        } finally {
+            newUploadBtn.disabled = false;
+            newUploadBtn.innerHTML = '<i class="bi bi-upload me-2"></i>Upload & Import';
+        }
+    });
+
+    modal.show();
+}
+
+function downloadProductTemplate() {
+    const template = [
+        {
+            'Product Name': 'Example Product 1',
+            'Category': 'Catheters',
+            'Sub Category': 'Diagnostic',
+            'Company': 'Medtronic',
+            'Line': 'Vascular'
+        },
+        {
+            'Product Name': 'Example Product 2',
+            'Category': 'Wires',
+            'Sub Category': '',
+            'Company': 'Boston Scientific',
+            'Line': 'Cardiac'
+        }
+    ];
+    downloadAsExcel('Product_Upload_Template', template, {
+        'Product Name': 'Product Name',
+        'Category': 'Category',
+        'Sub Category': 'Sub Category',
+        'Company': 'Company',
+        'Line': 'Line'
+    });
+}
+
+function downloadDoctorTemplate() {
+    const template = [
+        {
+            'Doctor Name': 'Dr. John Smith',
+            'Product Specialist Name': 'Ahmed Ali',
+            'Line': 'Vascular',
+            'Product Specialist 2 Name': '',
+            'PS 2 Line': '',
+            'Product Specialist 3 Name': '',
+            'PS 3 Line': '',
+            'Product Specialist 4 Name': '',
+            'PS 4 Line': '',
+            'Product Specialist 5 Name': '',
+            'PS 5 Line': '',
+            'Specialty': 'Cardiology',
+            'Phone': '01234567890',
+            'Email Address': 'doctor@hospital.com'
+        }
+    ];
+    downloadAsExcel('Doctor_Upload_Template', template, {
+        'Doctor Name': 'Doctor Name',
+        'Product Specialist Name': 'Product Specialist Name',
+        'Line': 'Line',
+        'Product Specialist 2 Name': 'Product Specialist 2 Name',
+        'PS 2 Line': 'PS 2 Line',
+        'Product Specialist 3 Name': 'Product Specialist 3 Name',
+        'PS 3 Line': 'PS 3 Line',
+        'Product Specialist 4 Name': 'Product Specialist 4 Name',
+        'PS 4 Line': 'PS 4 Line',
+        'Product Specialist 5 Name': 'Product Specialist 5 Name',
+        'PS 5 Line': 'PS 5 Line',
+        'Specialty': 'Specialty',
+        'Phone': 'Phone',
+        'Email Address': 'Email Address'
+    });
+}
+
+function downloadAccountTemplate() {
+    const template = [
+        {
+            'Account Name': 'Cairo Hospital',
+            'Product Specialist Name': 'Ahmed Ali',
+            'Line': 'Vascular',
+            'Account Type': 'Private',
+            'Product Specialist 2 Name': '',
+            'PS 2 Line': '',
+            'Product Specialist 3 Name': '',
+            'PS 3 Line': '',
+            'Address': '123 Main Street',
+            'Governorate': 'Cairo'
+        }
+    ];
+    downloadAsExcel('Account_Upload_Template', template, {
+        'Account Name': 'Account Name',
+        'Product Specialist Name': 'Product Specialist Name',
+        'Line': 'Line',
+        'Account Type': 'Account Type',
+        'Product Specialist 2 Name': 'Product Specialist 2 Name',
+        'PS 2 Line': 'PS 2 Line',
+        'Product Specialist 3 Name': 'Product Specialist 3 Name',
+        'PS 3 Line': 'PS 3 Line',
+        'Address': 'Address',
+        'Governorate': 'Governorate'
+    });
+}
+
+function setupProductBulkUpload() {
+    const importButton = document.getElementById('import-products-btn');
+    if (!importButton) return;
+
+    importButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        openBulkImportModal('product', {
+            title: 'Bulk Import Products',
+            description: 'Import multiple products at once. Required: Product Name, Category, Company, Line. Optional: Sub Category.',
+            downloadTemplate: downloadProductTemplate,
+            processUpload: processProductUpload
+        });
+    });
+}
+
+async function processProductUpload(file) {
+    try {
+        const rows = await readExcelFile(file);
+        const failures = [];
+        let successCount = 0;
+
+        for (const row of rows) {
+            const productName = (row['Product Name'] || '').trim();
+            const category = (row['Category'] || '').trim();
+            const subCategory = (row['Sub Category'] || '').trim();
+            const companyName = (row['Company'] || '').trim();
+            const lineName = (row['Line'] || '').trim();
+
+            // Validate required fields
+            if (!productName || !category || !companyName || !lineName) {
+                failures.push({ row, reason: 'Missing required fields (Product Name, Category, Company, Line)' });
+                continue;
+            }
+
+            try {
+                // Ensure company exists
+                const companyId = await ensureCompany(companyName);
+                if (!companyId) {
+                    failures.push({ row, reason: `Failed to create/find company: ${companyName}` });
                     continue;
                 }
+
+                // Ensure line exists
+                const lineId = await ensureLine(lineName);
+                if (!lineId) {
+                    failures.push({ row, reason: `Failed to create/find line: ${lineName}` });
+                    continue;
+                }
+
+                // Check if company is marked as company product
+                const company = state.companies.find(c => c.id === companyId);
+                const isCompanyProduct = company ? company.is_company : false;
+
+                // Insert product
+                await handleSupabase(
+                    supabase
+                        .from('products')
+                        .insert({
+                            name: productName,
+                            category: category,
+                            sub_category: subCategory || null,
+                            company_id: companyId,
+                            line_id: lineId,
+                            is_company_product: isCompanyProduct,
+                            created_by: state.session.employeeId
+                        }),
+                    'bulk insert product'
+                );
+                successCount++;
+            } catch (err) {
+                failures.push({ row, reason: `Error: ${err.message}` });
+            }
+        }
+
+        await loadProducts();
+        renderProductsSection({ refreshFilters: true });
+
+        if (failures.length > 0) {
+            return { success: false, message: `Upload completed: ${successCount} products uploaded successfully, ${failures.length} rows skipped.\n\nFirst few errors:\n${failures.slice(0, 3).map(f => f.reason).join('\n')}` };
+        } else {
+            return { success: true, message: `✓ All ${successCount} products uploaded successfully!` };
+        }
+    } catch (error) {
+        return { success: false, message: `Upload failed: ${handleError(error)}` };
+    }
+}
+
+function setupDoctorBulkUpload() {
+    const importButton = document.getElementById('import-doctors-btn');
+    if (!importButton) return;
+
+    importButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        openBulkImportModal('doctor', {
+            title: 'Bulk Import Doctors',
+            description: 'Import multiple doctors at once. Required: Doctor Name, Product Specialist Name, Line. Optional: PS 2-5 Names/Lines, Specialty, Phone, Email Address.',
+            downloadTemplate: downloadDoctorTemplate,
+            processUpload: processDoctorUpload
+        });
+    });
+}
+
+async function processDoctorUpload(file) {
+    try {
+        const rows = await readExcelFile(file);
+        const failures = [];
+        let successCount = 0;
+
+        for (const row of rows) {
+            const name = (row['Doctor Name'] || '').trim();
+            const specialistName = (row['Product Specialist Name'] || '').trim();
+            const lineName = (row['Line'] || '').trim();
+
+            // Validate required fields
+            if (!name || !specialistName || !lineName) {
+                failures.push({ row, reason: 'Missing required fields (Doctor Name, Product Specialist Name, Line)' });
+                continue;
+            }
+
+            try {
+                // Find primary specialist
                 const specialist = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialistName.toLowerCase());
                 if (!specialist) {
-                    failures.push({ row, reason: `Specialist not found (${specialistName})` });
+                    failures.push({ row, reason: `Product Specialist not found: ${specialistName}` });
                     continue;
                 }
-                const lineId = lineName ? await ensureLine(lineName) : specialist.line_id;
+
+                // Ensure primary line
+                const lineId = await ensureLine(lineName);
+
+                // Process secondary specialist (PS 2)
+                const specialist2Name = (row['Product Specialist 2 Name'] || '').trim();
+                const line2Name = (row['PS 2 Line'] || '').trim();
+                let specialist2Id = null;
+                let line2Id = null;
+                if (specialist2Name) {
+                    const specialist2 = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialist2Name.toLowerCase());
+                    if (specialist2) {
+                        specialist2Id = specialist2.id;
+                        line2Id = line2Name ? await ensureLine(line2Name) : specialist2.line_id;
+                    }
+                }
+
+                // Process tertiary specialist (PS 3)
+                const specialist3Name = (row['Product Specialist 3 Name'] || '').trim();
+                const line3Name = (row['PS 3 Line'] || '').trim();
+                let specialist3Id = null;
+                let line3Id = null;
+                if (specialist3Name) {
+                    const specialist3 = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialist3Name.toLowerCase());
+                    if (specialist3) {
+                        specialist3Id = specialist3.id;
+                        line3Id = line3Name ? await ensureLine(line3Name) : specialist3.line_id;
+                    }
+                }
+
+                // Process quaternary specialist (PS 4)
+                const specialist4Name = (row['Product Specialist 4 Name'] || '').trim();
+                const line4Name = (row['PS 4 Line'] || '').trim();
+                let specialist4Id = null;
+                let line4Id = null;
+                if (specialist4Name) {
+                    const specialist4 = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialist4Name.toLowerCase());
+                    if (specialist4) {
+                        specialist4Id = specialist4.id;
+                        line4Id = line4Name ? await ensureLine(line4Name) : specialist4.line_id;
+                    }
+                }
+
+                // Process quinary specialist (PS 5)
+                const specialist5Name = (row['Product Specialist 5 Name'] || '').trim();
+                const line5Name = (row['PS 5 Line'] || '').trim();
+                let specialist5Id = null;
+                let line5Id = null;
+                if (specialist5Name) {
+                    const specialist5 = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialist5Name.toLowerCase());
+                    if (specialist5) {
+                        specialist5Id = specialist5.id;
+                        line5Id = line5Name ? await ensureLine(line5Name) : specialist5.line_id;
+                    }
+                }
+
+                // Insert doctor with all specialists
                 await handleSupabase(
                     supabase
                         .from('doctors')
@@ -5176,6 +5487,14 @@ function setupDoctorBulkUpload() {
                             name,
                             owner_employee_id: specialist.id,
                             line_id: lineId,
+                            secondary_employee_id: specialist2Id,
+                            secondary_line_id: line2Id,
+                            tertiary_employee_id: specialist3Id,
+                            tertiary_line_id: line3Id,
+                            quaternary_employee_id: specialist4Id,
+                            quaternary_line_id: line4Id,
+                            quinary_employee_id: specialist5Id,
+                            quinary_line_id: line5Id,
                             specialty: (row['Specialty'] || '').trim() || null,
                             phone: (row['Phone'] || '').trim() || null,
                             email_address: (row['Email Address'] || '').trim() || null,
@@ -5186,50 +5505,102 @@ function setupDoctorBulkUpload() {
                         }),
                     'bulk insert doctor'
                 );
+                successCount++;
+            } catch (err) {
+                failures.push({ row, reason: `Error: ${err.message}` });
             }
-
-            await loadDoctors();
-            renderDoctorsSection({ refreshFilters: true });
-            fileInput.value = '';
-            alert(failures.length ? `Upload finished with ${failures.length} skipped rows.` : 'Doctors uploaded successfully.');
-        } catch (error) {
-            alert(handleError(error));
         }
-    });
+
+        await loadDoctors();
+        renderDoctorsSection({ refreshFilters: true });
+
+        if (failures.length > 0) {
+            return { success: false, message: `Upload completed: ${successCount} doctors uploaded successfully, ${failures.length} rows skipped.\n\nFirst few errors:\n${failures.slice(0, 3).map(f => f.reason).join('\n')}` };
+        } else {
+            return { success: true, message: `✓ All ${successCount} doctors uploaded successfully!` };
+        }
+    } catch (error) {
+        return { success: false, message: `Upload failed: ${handleError(error)}` };
+    }
 }
 
 function setupAccountBulkUpload() {
-    const uploadButton = document.getElementById('upload-accounts');
-    const fileInput = document.getElementById('account-upload');
-    if (!uploadButton || !fileInput) return;
-    uploadButton.addEventListener('click', async (event) => {
+    const importButton = document.getElementById('import-accounts-btn');
+    if (!importButton) return;
+
+    importButton.addEventListener('click', (event) => {
         event.preventDefault();
-        if (!fileInput.files.length) {
-            alert('Please select an Excel file first.');
-            return;
-        }
-        try {
-            const rows = await readExcelFile(fileInput.files[0]);
-            const failures = [];
-            for (const row of rows) {
-                const name = (row['Account Name'] || row['Name'] || '').trim();
-                const specialistName = (row['Product Specialist Name'] || row['Product Specialist'] || '').trim();
-                const accountType = (row['Account Type'] || '').trim();
-                const lineName = (row['Line'] || '').trim();
-                if (!name || !specialistName || !accountType) {
-                    failures.push({ row, reason: 'Missing required fields' });
-                    continue;
-                }
+        openBulkImportModal('account', {
+            title: 'Bulk Import Accounts',
+            description: 'Import multiple accounts at once. Required: Account Name, Product Specialist Name, Line, Account Type (Private/UPA/Military). Optional: PS 2-3 Names/Lines, Address, Governorate.',
+            downloadTemplate: downloadAccountTemplate,
+            processUpload: processAccountUpload
+        });
+    });
+}
+
+async function processAccountUpload(file) {
+    try {
+        const rows = await readExcelFile(file);
+        const failures = [];
+        let successCount = 0;
+
+        for (const row of rows) {
+            const name = (row['Account Name'] || '').trim();
+            const specialistName = (row['Product Specialist Name'] || '').trim();
+            const accountType = (row['Account Type'] || '').trim();
+            const lineName = (row['Line'] || '').trim();
+
+            // Validate required fields
+            if (!name || !specialistName || !accountType || !lineName) {
+                failures.push({ row, reason: 'Missing required fields (Account Name, Product Specialist Name, Account Type, Line)' });
+                continue;
+            }
+
+            try {
+                // Find primary specialist
                 const specialist = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialistName.toLowerCase());
                 if (!specialist) {
-                    failures.push({ row, reason: `Specialist not found (${specialistName})` });
+                    failures.push({ row, reason: `Product Specialist not found: ${specialistName}` });
                     continue;
                 }
-                const lineId = lineName ? await ensureLine(lineName) : specialist.line_id;
+
+                // Validate account type
                 if (!ACCOUNT_TYPES.includes(accountType)) {
-                    failures.push({ row, reason: `Invalid account type (${accountType})` });
+                    failures.push({ row, reason: `Invalid account type: ${accountType}. Must be one of: ${ACCOUNT_TYPES.join(', ')}` });
                     continue;
                 }
+
+                // Ensure primary line
+                const lineId = await ensureLine(lineName);
+
+                // Process secondary specialist (PS 2)
+                const specialist2Name = (row['Product Specialist 2 Name'] || '').trim();
+                const line2Name = (row['PS 2 Line'] || '').trim();
+                let specialist2Id = null;
+                let line2Id = null;
+                if (specialist2Name) {
+                    const specialist2 = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialist2Name.toLowerCase());
+                    if (specialist2) {
+                        specialist2Id = specialist2.id;
+                        line2Id = line2Name ? await ensureLine(line2Name) : specialist2.line_id;
+                    }
+                }
+
+                // Process tertiary specialist (PS 3)
+                const specialist3Name = (row['Product Specialist 3 Name'] || '').trim();
+                const line3Name = (row['PS 3 Line'] || '').trim();
+                let specialist3Id = null;
+                let line3Id = null;
+                if (specialist3Name) {
+                    const specialist3 = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialist3Name.toLowerCase());
+                    if (specialist3) {
+                        specialist3Id = specialist3.id;
+                        line3Id = line3Name ? await ensureLine(line3Name) : specialist3.line_id;
+                    }
+                }
+
+                // Insert account with all specialists
                 await handleSupabase(
                     supabase
                         .from('accounts')
@@ -5238,6 +5609,10 @@ function setupAccountBulkUpload() {
                             owner_employee_id: specialist.id,
                             account_type: accountType,
                             line_id: lineId,
+                            secondary_employee_id: specialist2Id,
+                            secondary_line_id: line2Id,
+                            tertiary_employee_id: specialist3Id,
+                            tertiary_line_id: line3Id,
                             address: (row['Address'] || '').trim() || null,
                             governorate: (row['Governorate'] || '').trim() || null,
                             status: APPROVAL_STATUS.APPROVED,
@@ -5247,16 +5622,23 @@ function setupAccountBulkUpload() {
                         }),
                     'bulk insert account'
                 );
+                successCount++;
+            } catch (err) {
+                failures.push({ row, reason: `Error: ${err.message}` });
             }
-
-            await loadAccounts();
-            renderAccountsSection({ refreshFilters: true });
-            fileInput.value = '';
-            alert(failures.length ? `Upload finished with ${failures.length} skipped rows.` : 'Accounts uploaded successfully.');
-        } catch (error) {
-            alert(handleError(error));
         }
-    });
+
+        await loadAccounts();
+        renderAccountsSection({ refreshFilters: true });
+
+        if (failures.length > 0) {
+            return { success: false, message: `Upload completed: ${successCount} accounts uploaded successfully, ${failures.length} rows skipped.\n\nFirst few errors:\n${failures.slice(0, 3).map(f => f.reason).join('\n')}` };
+        } else {
+            return { success: true, message: `✓ All ${successCount} accounts uploaded successfully!` };
+        }
+    } catch (error) {
+        return { success: false, message: `Upload failed: ${handleError(error)}` };
+    }
 }
 function setupExportButtons() {
     document.getElementById('export-products')?.addEventListener('click', (event) => {

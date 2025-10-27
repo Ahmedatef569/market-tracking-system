@@ -154,10 +154,20 @@
                                     <form id="product-form" novalidate>
                                         <div class="row g-3"></div>
                                     </form>
+                                    <hr class="border-secondary opacity-25">
+                                    <div>
+                                        <label class="form-label">Bulk Upload</label>
+                                        <input type="file" class="form-control" id="product-upload" accept=".xlsx,.xls">
+                                        <small class="text-secondary d-block mt-2">Required: Product Name, Category, Company, Line. Optional: Sub Category</small>
+                                        <div class="d-flex gap-2 mt-3">
+                                            <button class="btn btn-outline-ghost" id="download-product-template"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Download Template</button>
+                                            <button class="btn btn-outline-ghost" id="upload-products"><i class="bi bi-upload me-2"></i>Upload</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                             <div class="col-12"><div class="d-flex flex-wrap justify-content-end align-items-center gap-2 mb-3">
-                                    <div class="actions-row"><button class="btn btn-gradient" data-open-form="#product-form" data-form-title="Add Product"><i class="bi bi-plus-circle me-2"></i>Add Product</button><button class="btn btn-outline-ghost" id="export-products"><i class="bi bi-download me-2"></i>Export</button>
+                                    <div class="actions-row"><button class="btn btn-gradient" data-open-form="#product-form" data-form-title="Add Product"><i class="bi bi-plus-circle me-2"></i>Add Product</button><button class="btn btn-outline-ghost" id="import-products-btn"><i class="bi bi-upload me-2"></i>Import</button><button class="btn btn-outline-ghost" id="export-products"><i class="bi bi-download me-2"></i>Export</button>
                                     </div>
                                 </div>
                                 <div class="stat-cards stat-cards--quad" id="product-stat-cards"></div>
@@ -178,13 +188,16 @@
                                     <div>
                                         <label class="form-label">Bulk Upload</label>
                                         <input type="file" class="form-control" id="doctor-upload" accept=".xlsx,.xls">
-                                        <small class="text-secondary d-block mt-2">Columns: Doctor Name, Product Specialist, Line, Specialty, Phone, Clinic Address</small>
-                                        <button class="btn btn-outline-ghost mt-3" id="upload-doctors"><i class="bi bi-upload me-2"></i>Upload</button>
+                                        <small class="text-secondary d-block mt-2">Required: Doctor Name, Product Specialist Name, Line. Optional: PS 2-5 Names/Lines, Specialty, Phone, Email Address</small>
+                                        <div class="d-flex gap-2 mt-3">
+                                            <button class="btn btn-outline-ghost" id="download-doctor-template"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Download Template</button>
+                                            <button class="btn btn-outline-ghost" id="upload-doctors"><i class="bi bi-upload me-2"></i>Upload</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                             <div class="col-12"><div class="d-flex flex-wrap justify-content-end align-items-center gap-2 mb-3">
-                                    <div class="actions-row"><button class="btn btn-gradient" data-open-form="#doctor-form" data-form-title="Add Doctor"><i class="bi bi-plus-circle me-2"></i>Add Doctor</button><button class="btn btn-outline-ghost" id="export-doctors"><i class="bi bi-download me-2"></i>Export</button>
+                                    <div class="actions-row"><button class="btn btn-gradient" data-open-form="#doctor-form" data-form-title="Add Doctor"><i class="bi bi-plus-circle me-2"></i>Add Doctor</button><button class="btn btn-outline-ghost" id="import-doctors-btn"><i class="bi bi-upload me-2"></i>Import</button><button class="btn btn-outline-ghost" id="export-doctors"><i class="bi bi-download me-2"></i>Export</button>
                                     </div>
                                 </div>
                                 <div class="stat-cards stat-cards--quad" id="doctor-stat-cards"></div>
@@ -205,13 +218,16 @@
                                     <div>
                                         <label class="form-label">Bulk Upload</label>
                                         <input type="file" class="form-control" id="account-upload" accept=".xlsx,.xls">
-                                        <small class="text-secondary d-block mt-2">Columns: Account Name, Product Specialist, Line, Account Type, Address, Governorate</small>
-                                        <button class="btn btn-outline-ghost mt-3" id="upload-accounts"><i class="bi bi-upload me-2"></i>Upload</button>
+                                        <small class="text-secondary d-block mt-2">Required: Account Name, Product Specialist Name, Line, Account Type. Optional: PS 2-3 Names/Lines, Address, Governorate</small>
+                                        <div class="d-flex gap-2 mt-3">
+                                            <button class="btn btn-outline-ghost" id="download-account-template"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Download Template</button>
+                                            <button class="btn btn-outline-ghost" id="upload-accounts"><i class="bi bi-upload me-2"></i>Upload</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                             <div class="col-12"><div class="d-flex flex-wrap justify-content-end align-items-center gap-2 mb-3">
-                                    <div class="actions-row"><button class="btn btn-gradient" data-open-form="#account-form" data-form-title="Add Account"><i class="bi bi-plus-circle me-2"></i>Add Account</button><button class="btn btn-outline-ghost" id="export-accounts"><i class="bi bi-download me-2"></i>Export</button>
+                                    <div class="actions-row"><button class="btn btn-gradient" data-open-form="#account-form" data-form-title="Add Account"><i class="bi bi-plus-circle me-2"></i>Add Account</button><button class="btn btn-outline-ghost" id="import-accounts-btn"><i class="bi bi-upload me-2"></i>Import</button><button class="btn btn-outline-ghost" id="export-accounts"><i class="bi bi-download me-2"></i>Export</button>
                                     </div>
                                 </div>
                                 <div class="stat-cards stat-cards--quad" id="account-stat-cards"></div>
@@ -434,5 +450,36 @@
     </div>
   </div>
 </div>
+
+<!-- Bulk Import Modal -->
+<div class="modal fade" id="bulkImportModal" tabindex="-1" aria-labelledby="bulkImportModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content bg-dark text-light">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title" id="bulkImportModalLabel">Bulk Import</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-4">
+          <h6 class="text-secondary mb-2">Step 1: Download Template</h6>
+          <p class="small text-secondary mb-3" id="import-modal-description">Download the Excel template with the correct format and example data.</p>
+          <button class="btn btn-outline-ghost w-100" id="import-modal-download-btn">
+            <i class="bi bi-file-earmark-spreadsheet me-2"></i>Download Template
+          </button>
+        </div>
+        <hr class="border-secondary opacity-25">
+        <div>
+          <h6 class="text-secondary mb-2">Step 2: Upload Your File</h6>
+          <p class="small text-secondary mb-3">Select your filled Excel file to upload.</p>
+          <input type="file" class="form-control mb-3" id="import-modal-file-input" accept=".xlsx,.xls">
+          <button class="btn btn-gradient w-100" id="import-modal-upload-btn">
+            <i class="bi bi-upload me-2"></i>Upload & Import
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
