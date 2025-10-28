@@ -55,10 +55,17 @@
             font-size: 1.75rem;
             margin-bottom: 12px;
             font-weight: 600;
+            text-align: center;
         }
         .login-card p {
             color: var(--text-secondary);
             margin-bottom: 28px;
+        }
+        .login-subtitle {
+            font-size: 0.875rem;
+            line-height: 1.5;
+            text-align: center;
+            max-width: 100%;
         }
         .login-logo {
             display: grid;
@@ -130,6 +137,9 @@
                 width: 155px;
                 height: 98px;
             }
+            .login-subtitle {
+                font-size: 0.8rem;
+            }
         }
     </style>
 </head>
@@ -139,7 +149,7 @@
             <img src="assets/logo_large.svg" alt="Market Tracking System Logo">
         </div>
         <h1>Market Tracking System</h1>
-        <p class="mb-4">Real-time tracking on surgical market activities.</p>
+        <p class="mb-4 login-subtitle">Competitive Intelligence for Vascular Surgery Market</p>
         <form id="login-form" novalidate>
             <div class="mb-3">
                 <label for="username" class="form-label">Username</label>

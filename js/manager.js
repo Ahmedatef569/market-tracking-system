@@ -937,7 +937,7 @@ async function loadTeamDoctors() {
             .neq('status', APPROVAL_STATUS.REJECTED)
             .order('created_at', { ascending: false })
             .or(
-                `owner_employee_id.in.(${idList}),secondary_employee_id.in.(${idList}),tertiary_employee_id.in.(${idList})`
+                `owner_employee_id.in.(${idList}),secondary_employee_id.in.(${idList}),tertiary_employee_id.in.(${idList}),quaternary_employee_id.in.(${idList}),quinary_employee_id.in.(${idList})`
             );
         data = (await handleSupabase(query, 'load team doctors')) || [];
     }
@@ -1379,11 +1379,13 @@ function getFilteredTeamDoctors() {
         const assignedIds = [
             doctor.owner_employee_id,
             doctor.secondary_employee_id,
-            doctor.tertiary_employee_id
+            doctor.tertiary_employee_id,
+            doctor.quaternary_employee_id,
+            doctor.quinary_employee_id
         ].filter(Boolean);
         if (assignedIds.some((id) => String(id) === String(specialist))) return true;
         if (!normalizedName) return false;
-        return [doctor.owner_name, doctor.secondary_owner_name, doctor.tertiary_owner_name]
+        return [doctor.owner_name, doctor.secondary_owner_name, doctor.tertiary_owner_name, doctor.quaternary_owner_name, doctor.quinary_owner_name]
             .filter(Boolean)
             .some((name) => name.toLowerCase() === normalizedName);
     });
@@ -1469,7 +1471,9 @@ function renderTeamDoctorStats(doctors) {
             .flatMap((doctor) => [
                 doctor.owner_employee_id,
                 doctor.secondary_employee_id,
-                doctor.tertiary_employee_id
+                doctor.tertiary_employee_id,
+                doctor.quaternary_employee_id,
+                doctor.quinary_employee_id
             ])
             .filter(Boolean)
             .map((id) => String(id))
@@ -1485,7 +1489,7 @@ function renderTeamDoctorStats(doctors) {
             <div class="value">${formatNumber(pending)}</div>
         </div>
         <div class="stat-card">
-            <h4>Specialists</h4>
+            <h4>Product Specialists</h4>
             <div class="value">${formatNumber(specialistCount)}</div>
         </div>
     `;

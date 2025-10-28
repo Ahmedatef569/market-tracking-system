@@ -2892,78 +2892,9 @@ async function ensureLineForSpecialist(name) {
 }
 
 function renderDoctorSection(options = {}) {
-    const { refreshFilters = false } = options;
-    if (refreshFilters) {
-        renderDoctorFilters();
-    }
-    const filtered = getFilteredDoctors();
-    renderDoctorTable(filtered);
-    renderDoctorStats(filtered);
-}
-
-function renderDoctorFilters() {
-    const container = document.getElementById('ps-doctor-filters');
-    if (!container) return;
-    const { specialist } = state.filters.doctors;
-    const ownerIds = distinct(
-        state.doctors
-            .flatMap((doctor) => [
-                doctor.owner_employee_id,
-                doctor.secondary_employee_id,
-                doctor.tertiary_employee_id
-            ])
-            .filter(Boolean)
-            .map((id) => String(id))
-    );
-    const employeeId = state.session.employeeId ? String(state.session.employeeId) : '';
-    if (employeeId && !ownerIds.includes(employeeId)) {
-        ownerIds.push(employeeId);
-    }
-    const options = ownerIds
-        .map((id) => ({
-            value: id,
-            label:
-                id === employeeId
-                    ? state.session.employee?.fullName || state.session.username || 'Me'
-                    : `Specialist #${id}`
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label));
-
-    if (specialist && !options.some((option) => option.value === specialist)) {
-        state.filters.doctors.specialist = '';
-    }
-    const selectedSpecialist = state.filters.doctors.specialist;
-
-    container.innerHTML = `
-        <div class="filters-row">
-            <select class="form-select form-select-sm" id="employee-filter-doctor-specialist" aria-label="Filter doctors by product specialist">
-                <option value="">All Product Specialists</option>
-                ${options
-                    .map(
-                        (option) =>
-                            `<option value="${option.value}"${
-                                option.value === selectedSpecialist ? ' selected' : ''
-                            }>${option.label}</option>`
-                    )
-                    .join('')}
-            </select>
-        </div>
-    `;
-
-    container.querySelector('#employee-filter-doctor-specialist')?.addEventListener('change', (event) => {
-        state.filters.doctors.specialist = event.target.value;
-        renderDoctorSection();
-    });
-}
-
-function getFilteredDoctors() {
-    const { specialist } = state.filters.doctors;
-    if (!specialist) return state.doctors.slice();
-    return state.doctors.filter((doctor) =>
-        [doctor.owner_employee_id, doctor.secondary_employee_id, doctor.tertiary_employee_id]
-            .filter(Boolean)
-            .some((id) => String(id) === String(specialist))
-    );
+    // No filters needed for employee view - show all their doctors
+    renderDoctorTable(state.doctors);
+    renderDoctorStats(state.doctors);
 }
 
 function renderDoctorTable(doctors = state.doctors) {
@@ -3043,7 +2974,7 @@ function renderDoctorStats(doctors = state.doctors) {
             <div class="value">${formatNumber(pending)}</div>
         </div>
         <div class="stat-card">
-            <h4>Specialists</h4>
+            <h4>Product Specialists</h4>
             <div class="value">${formatNumber(specialists)}</div>
         </div>
     `;
@@ -3160,51 +3091,9 @@ async function handleAccountSubmit(event) {
 }
 
 function renderAccountSection(options = {}) {
-    const { refreshFilters = false } = options;
-    if (refreshFilters) {
-        renderAccountFilters();
-    }
-    const filtered = getFilteredAccounts();
-    renderAccountTable(filtered);
-    renderAccountStats(filtered);
-}
-
-function renderAccountFilters() {
-    const container = document.getElementById('ps-account-filters');
-    if (!container) return;
-    const { accountType } = state.filters.accounts;
-
-    if (accountType && !ACCOUNT_TYPES.includes(accountType)) {
-        state.filters.accounts.accountType = '';
-    }
-    const selectedAccountType = state.filters.accounts.accountType;
-
-    container.innerHTML = `
-        <div class="filters-row">
-            <select class="form-select form-select-sm" id="employee-filter-account-type" aria-label="Filter accounts by account type">
-                <option value="">All Account Types</option>
-                ${ACCOUNT_TYPES.map(
-                    (typeOption) =>
-                        `<option value="${typeOption}"${
-                            typeOption === selectedAccountType ? ' selected' : ''
-                        }>${typeOption}</option>`
-                ).join('')}
-            </select>
-        </div>
-    `;
-
-    container.querySelector('#employee-filter-account-type')?.addEventListener('change', (event) => {
-        state.filters.accounts.accountType = event.target.value;
-        renderAccountSection();
-    });
-}
-
-function getFilteredAccounts() {
-    const { accountType } = state.filters.accounts;
-    return state.accounts.filter((account) => {
-        if (accountType && (account.account_type || '') !== accountType) return false;
-        return true;
-    });
+    // No filters needed for employee view - show all their accounts
+    renderAccountTable(state.accounts);
+    renderAccountStats(state.accounts);
 }
 
 function renderAccountTable(accounts = state.accounts) {
