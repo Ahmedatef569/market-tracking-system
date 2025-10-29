@@ -2735,8 +2735,7 @@ function renderProductsTable(products) {
     ];
 
     state.tables.products = createTable('my-products-table', columns, tableData, {
-        height: 420,
-        paginationSize: 15
+        height: 420
     });
 }
 
@@ -2941,7 +2940,7 @@ function renderDoctorTable(doctors = state.doctors) {
         { title: 'Created', field: 'created_at', formatter: tableFormatters.date, width: 140 }
     ];
 
-    state.tables.doctors = createTable('ps-doctor-table', columns, tableData, { height: 420, paginationSize: 10 });
+    state.tables.doctors = createTable('ps-doctor-table', columns, tableData, { height: 420 });
     attachProductSpecialistToggle(state.tables.doctors, {
         lineField: 'line',
         toggleFields: ['specialist2', 'line2', 'specialist3', 'line3', 'specialist4', 'line4', 'specialist5', 'line5'],
@@ -3132,7 +3131,7 @@ function renderAccountTable(accounts = state.accounts) {
         { title: 'Created', field: 'created_at', formatter: tableFormatters.date, width: 140 }
     ];
 
-    state.tables.accounts = createTable('ps-account-table', columns, tableData, { height: 420, paginationSize: 10 });
+    state.tables.accounts = createTable('ps-account-table', columns, tableData, { height: 420 });
     attachProductSpecialistToggle(state.tables.accounts, {
         lineField: 'line',
         toggleFields: ['specialist2', 'line2', 'specialist3', 'line3'],

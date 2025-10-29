@@ -1291,8 +1291,7 @@ function renderTeamProductsTable(products) {
     ];
 
     state.tables.teamProducts = createTable('team-products-table', columns, tableData, {
-        height: 420,
-        paginationSize: 15
+        height: 420
     });
 }
 
@@ -1448,8 +1447,7 @@ function renderTeamDoctorTable(doctors) {
     ];
 
     state.tables.teamDoctors = createTable('team-doctor-table', columns, tableData, {
-        height: 420,
-        paginationSize: 10
+        height: 420
     });
     attachProductSpecialistToggle(state.tables.teamDoctors, {
         lineField: 'line',
@@ -1621,8 +1619,7 @@ function renderTeamAccountTable(accounts) {
     ];
 
     state.tables.teamAccounts = createTable('team-account-table', columns, tableData, {
-        height: 420,
-        paginationSize: 10
+        height: 420
     });
     attachProductSpecialistToggle(state.tables.teamAccounts, {
         lineField: 'line',
