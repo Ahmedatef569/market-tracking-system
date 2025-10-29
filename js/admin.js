@@ -3357,7 +3357,10 @@ function renderCasesTable(cases) {
         });
     }
 
-    state.tables.cases = createTable('cases-table', columns, tableData, { height: 520, paginationSize: 12 });
+    state.tables.cases = createTable('cases-table', columns, tableData, {
+        height: 520,
+        initialSort: [{ column: 'created_at', dir: 'desc' }]
+    });
     bindTableActions(state.tables.cases, {
         delete: (rowData) => deleteCase(rowData.id)
     });
@@ -3418,7 +3421,10 @@ function renderApprovalsTable() {
         }
     ];
 
-    state.tables.approvals = createTable('approvals-table', columns, filtered, { height: 520 });
+    state.tables.approvals = createTable('approvals-table', columns, filtered, {
+        height: 520,
+        initialSort: [{ column: 'created_at', dir: 'desc' }]
+    });
 
     bindTableActions(state.tables.approvals, {
         review: (rowData) => reviewApproval(rowData),

@@ -7,8 +7,8 @@ const DEFAULT_OPTIONS = {
     placeholder: 'No data available',
     headerHozAlign: 'left',
     pagination: true,
-    paginationSize: 10,
-    paginationSizeSelector: [10, 25, 50, 100],
+    paginationSize: 100,
+    paginationSizeSelector: [10, 25, 50, 100, 200],
     height: '100%',
     columnDefaults: {
         vertAlign: 'middle',

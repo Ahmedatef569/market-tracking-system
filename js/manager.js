@@ -1757,7 +1757,10 @@ function renderTeamCases() {
 function renderTeamCasesTable(cases = []) {
     const tableData = cases.map((caseItem) => buildCaseTableRow(caseItem, state.teamCaseProductsByCase));
     const columns = buildCaseTableColumns(tableFormatters);
-    state.tables.teamCases = createTable('team-cases-table', columns, tableData, { height: 520, paginationSize: 12 });
+    state.tables.teamCases = createTable('team-cases-table', columns, tableData, {
+        height: 520,
+        initialSort: [{ column: 'created_at', dir: 'desc' }]
+    });
 }
 
 function renderTeamCaseStats(cases = []) {
@@ -2938,7 +2941,10 @@ function renderTeamApprovalsTable() {
         }
     ];
 
-    state.tables.teamApprovals = createTable('team-approvals-table', columns, filteredData, { height: 420, paginationSize: 10 });
+    state.tables.teamApprovals = createTable('team-approvals-table', columns, filteredData, {
+        height: 420,
+        initialSort: [{ column: 'created_at', dir: 'desc' }]
+    });
     bindTableActions(state.tables.teamApprovals, {
         review: (rowData) => reviewTeamApproval(rowData),
         approve: (rowData) => handleTeamApproval(rowData, true),
@@ -3067,7 +3073,10 @@ function renderMyApprovalsTable() {
         { title: 'Submitted', field: 'created_at', formatter: tableFormatters.date, width: 140 }
     ];
 
-    state.tables.myApprovals = createTable('manager-approvals-table', columns, state.myApprovals, { height: 400, paginationSize: 10 });
+    state.tables.myApprovals = createTable('manager-approvals-table', columns, state.myApprovals, {
+        height: 400,
+        initialSort: [{ column: 'created_at', dir: 'desc' }]
+    });
 }
 async function notifyEmployee(employeeId, message, entityType, entityId) {
     if (!employeeId) return;
@@ -4388,7 +4397,10 @@ function renderMyCases() {
 function renderMyCasesTable(cases = []) {
     const tableData = cases.map((caseItem) => buildCaseTableRow(caseItem, state.myCaseProductsByCase));
     const columns = buildCaseTableColumns(tableFormatters);
-    state.tables.myCases = createTable('manager-cases-table', columns, tableData, { height: 520, paginationSize: 12 });
+    state.tables.myCases = createTable('manager-cases-table', columns, tableData, {
+        height: 520,
+        initialSort: [{ column: 'created_at', dir: 'desc' }]
+    });
 }
 
 function renderMyCaseStats(cases) {

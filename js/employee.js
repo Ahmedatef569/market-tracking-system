@@ -1478,7 +1478,10 @@ function renderCaseStats(cases) {
 function renderCasesTable(cases) {
     const tableData = cases.map((caseItem) => buildCaseTableRow(caseItem, state.caseProductsByCase));
     const columns = buildCaseTableColumns(tableFormatters);
-    state.tables.cases = createTable('ps-cases-table', columns, tableData, { height: 520, paginationSize: 12 });
+    state.tables.cases = createTable('ps-cases-table', columns, tableData, {
+        height: 520,
+        initialSort: [{ column: 'created_at', dir: 'desc' }]
+    });
 }
 
 function exportCases() {
@@ -1511,7 +1514,10 @@ function renderApprovalsTable() {
         { title: 'Submitted', field: 'created_at', formatter: tableFormatters.date, width: 150 }
     ];
 
-    state.tables.approvals = createTable('ps-approvals-table', columns, tableData, { height: 420, paginationSize: 10 });
+    state.tables.approvals = createTable('ps-approvals-table', columns, tableData, {
+        height: 420,
+        initialSort: [{ column: 'created_at', dir: 'desc' }]
+    });
 }
 
 function formatApprovalType(type = '') {
