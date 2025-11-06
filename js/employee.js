@@ -676,9 +676,13 @@ function setupExportButtons() {
             owner_name: 'Product Specialist',
             secondary_owner_name: 'Product Specialist 2',
             tertiary_owner_name: 'Product Specialist 3',
+            quaternary_owner_name: 'Product Specialist 4',
+            quinary_owner_name: 'Product Specialist 5',
             line_name: 'Line',
             secondary_line_name: 'PS 2 Line',
             tertiary_line_name: 'PS 3 Line',
+            quaternary_line_name: 'PS 4 Line',
+            quinary_line_name: 'PS 5 Line',
             specialty: 'Specialty',
             phone: 'Phone',
             email_address: 'Email Address',
@@ -2597,27 +2601,36 @@ async function loadCases() {
 
 function buildApprovalDataset() {
     state.approvals = [
-        ...state.doctors.map((doctor) => ({
-            id: doctor.id,
-            type: 'doctor',
-            name: doctor.name,
-            status: doctor.status,
-            created_at: doctor.created_at
-        })),
-        ...state.accounts.map((account) => ({
-            id: account.id,
-            type: 'account',
-            name: account.name,
-            status: account.status,
-            created_at: account.created_at
-        })),
-        ...state.cases.map((caseItem) => ({
-            id: caseItem.id,
-            type: 'case',
-            name: caseItem.case_code,
-            status: caseItem.status,
-            created_at: caseItem.created_at
-        }))
+        // Only show doctors that are NOT approved (pending or rejected)
+        ...state.doctors
+            .filter((doctor) => doctor.status !== APPROVAL_STATUS.APPROVED)
+            .map((doctor) => ({
+                id: doctor.id,
+                type: 'doctor',
+                name: doctor.name,
+                status: doctor.status,
+                created_at: doctor.created_at
+            })),
+        // Only show accounts that are NOT approved (pending or rejected)
+        ...state.accounts
+            .filter((account) => account.status !== APPROVAL_STATUS.APPROVED)
+            .map((account) => ({
+                id: account.id,
+                type: 'account',
+                name: account.name,
+                status: account.status,
+                created_at: account.created_at
+            })),
+        // Only show cases that are NOT approved (pending or rejected)
+        ...state.cases
+            .filter((caseItem) => caseItem.status !== APPROVAL_STATUS.APPROVED)
+            .map((caseItem) => ({
+                id: caseItem.id,
+                type: 'case',
+                name: caseItem.case_code,
+                status: caseItem.status,
+                created_at: caseItem.created_at
+            }))
     ];
 }
 function renderProductsSection(options = {}) {
@@ -2918,6 +2931,7 @@ function renderDoctorTable(doctors = state.doctors) {
         line5: doctor.quinary_line_name || '',
         specialty: doctor.specialty,
         phone: doctor.phone,
+        email_address: doctor.email_address,
         status: doctor.status,
         created_at: doctor.created_at
     }));
@@ -2936,6 +2950,7 @@ function renderDoctorTable(doctors = state.doctors) {
         { title: 'PS 5 Line', field: 'line5', width: 140, headerFilter: 'input', visible: false },
         { title: 'Specialty', field: 'specialty', width: 160, headerFilter: 'input' },
         { title: 'Phone', field: 'phone', width: 140, headerFilter: 'input' },
+        { title: 'Email', field: 'email_address', width: 180, headerFilter: 'input' },
         { title: 'Status', field: 'status', formatter: tableFormatters.status, width: 140 },
         { title: 'Created', field: 'created_at', formatter: tableFormatters.date, width: 140 }
     ];

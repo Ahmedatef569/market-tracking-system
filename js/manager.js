@@ -771,6 +771,48 @@ function exportManagerDashboardCases() {
     downloadAsExcel('team_dashboard_cases', rows, CASE_EXPORT_HEADERS);
 }
 
+function setupExportButtons() {
+    document.getElementById('manager-export-doctors')?.addEventListener('click', (event) => {
+        event.preventDefault();
+        downloadAsExcel('team_doctors', state.doctors, {
+            name: 'Doctor',
+            owner_name: 'Product Specialist',
+            secondary_owner_name: 'Product Specialist 2',
+            tertiary_owner_name: 'Product Specialist 3',
+            quaternary_owner_name: 'Product Specialist 4',
+            quinary_owner_name: 'Product Specialist 5',
+            line_name: 'Line',
+            secondary_line_name: 'PS 2 Line',
+            tertiary_line_name: 'PS 3 Line',
+            quaternary_line_name: 'PS 4 Line',
+            quinary_line_name: 'PS 5 Line',
+            specialty: 'Specialty',
+            phone: 'Phone',
+            email_address: 'Email Address',
+            status: 'Status',
+            created_at: 'Created On'
+        });
+    });
+
+    document.getElementById('manager-export-accounts')?.addEventListener('click', (event) => {
+        event.preventDefault();
+        downloadAsExcel('team_accounts', state.accounts, {
+            name: 'Account',
+            account_type: 'Account Type',
+            owner_name: 'Product Specialist',
+            secondary_owner_name: 'Product Specialist 2',
+            tertiary_owner_name: 'Product Specialist 3',
+            line_name: 'Line',
+            secondary_line_name: 'PS 2 Line',
+            tertiary_line_name: 'PS 3 Line',
+            governorate: 'Governorate',
+            address: 'Address',
+            status: 'Status',
+            created_at: 'Created On'
+        });
+    });
+}
+
 function initializeForms() {
     setupTeamDoctorForm();
     setupTeamAccountForm();
@@ -779,6 +821,7 @@ function initializeForms() {
     setupManagerCaseFilters();
     setupMyCaseForm();
     setupDashboardFilters();
+    setupExportButtons();
 }
 
 function renderAll() {
@@ -1423,6 +1466,7 @@ function renderTeamDoctorTable(doctors) {
             line5: doctor.quinary_line_name || '',
             specialty: doctor.specialty,
             phone: doctor.phone,
+            email_address: doctor.email_address,
             status: doctor.status,
             created_at: doctor.created_at
         };
@@ -1442,6 +1486,7 @@ function renderTeamDoctorTable(doctors) {
         { title: 'PS 5 Line', field: 'line5', width: 140, headerFilter: 'input', visible: false },
         { title: 'Specialty', field: 'specialty', width: 160, headerFilter: 'input' },
         { title: 'Phone', field: 'phone', width: 140, headerFilter: 'input' },
+        { title: 'Email', field: 'email_address', width: 180, headerFilter: 'input' },
         { title: 'Status', field: 'status', formatter: tableFormatters.status, width: 140 },
         { title: 'Submitted', field: 'created_at', formatter: tableFormatters.date, width: 140 }
     ];

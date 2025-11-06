@@ -327,6 +327,8 @@ LEFT JOIN employees e ON c.submitted_by = e.id
 LEFT JOIN employees dm ON c.manager_id = dm.id
 LEFT JOIN employees adm ON c.admin_id = adm.id;
 
+-- View recreated on 2025-11-06 to fix email_address column (was clinic_address before)
+-- Migration: migrations/fix_doctor_view_email.sql
 CREATE OR REPLACE VIEW v_doctor_details AS
 SELECT
     d.id,
@@ -351,7 +353,7 @@ SELECT
     se.first_name || ' ' || se.last_name AS secondary_owner_name,
     te.first_name || ' ' || te.last_name AS tertiary_owner_name,
     qe.first_name || ' ' || qe.last_name AS quaternary_owner_name,
-    que.first_name || ' ' || que.last_name AS quinary_owner_name,
+    que.first_name || ' ' || qe.last_name AS quinary_owner_name,
     l.name AS line_name,
     ls.name AS secondary_line_name,
     lt.name AS tertiary_line_name,

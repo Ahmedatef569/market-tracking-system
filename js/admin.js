@@ -1922,6 +1922,7 @@ function renderDoctorTable(doctors = state.doctors) {
         line5: doctor.quinary_line_name || '',
         specialty: doctor.specialty,
         phone: doctor.phone,
+        email_address: doctor.email_address,
         status: doctor.status,
         created_at: doctor.created_at
     }));
@@ -1940,6 +1941,7 @@ function renderDoctorTable(doctors = state.doctors) {
         { title: 'PS 5 Line', field: 'line5', width: 140, headerFilter: 'input', visible: false },
         { title: 'Specialty', field: 'specialty', width: 160, headerFilter: 'input' },
         { title: 'Phone', field: 'phone', width: 140, headerFilter: 'input' },
+        { title: 'Email', field: 'email_address', width: 180, headerFilter: 'input' },
         { title: 'Status', field: 'status', formatter: tableFormatters.status, width: 140 },
         { title: 'Created', field: 'created_at', formatter: tableFormatters.date, width: 140 },
         {
@@ -5400,7 +5402,7 @@ function setupDoctorBulkUpload() {
         event.preventDefault();
         openBulkImportModal('doctor', {
             title: 'Bulk Import Doctors',
-            description: 'Import multiple doctors at once. Required: Doctor Name, Product Specialist Name, Line. Optional: PS 2-5 Names/Lines, Specialty, Phone, Email Address.',
+            description: 'Import/Update doctors. NEW doctors require: Doctor Name, Product Specialist Name, Line. UPDATES require only: Doctor Name + fields to update (Phone, Email, etc.). System auto-detects existing doctors.',
             downloadTemplate: downloadDoctorTemplate,
             processUpload: processDoctorUpload
         });
@@ -5411,109 +5413,141 @@ async function processDoctorUpload(file) {
     try {
         const rows = await readExcelFile(file);
         const failures = [];
-        let successCount = 0;
+        let insertCount = 0;
+        let updateCount = 0;
 
         for (const row of rows) {
             const name = (row['Doctor Name'] || '').trim();
-            const specialistName = (row['Product Specialist Name'] || '').trim();
-            const lineName = (row['Line'] || '').trim();
 
-            // Validate required fields
-            if (!name || !specialistName || !lineName) {
-                failures.push({ row, reason: 'Missing required fields (Doctor Name, Product Specialist Name, Line)' });
+            // Doctor name is always required
+            if (!name) {
+                failures.push({ row, reason: 'Missing required field: Doctor Name' });
                 continue;
             }
 
             try {
-                // Find primary specialist
-                const specialist = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialistName.toLowerCase());
-                if (!specialist) {
-                    failures.push({ row, reason: `Product Specialist not found: ${specialistName}` });
+                // Check if doctor already exists (case-insensitive)
+                const existingDoctor = await handleSupabase(
+                    supabase
+                        .from('doctors')
+                        .select('id, name')
+                        .ilike('name', name)
+                        .single(),
+                    'check existing doctor',
+                    { suppressError: true }
+                );
+
+                const isUpdate = !!existingDoctor;
+
+                // For NEW doctors: PS Name and Line are required
+                // For UPDATES: PS Name and Line are optional (will keep existing if not provided)
+                const specialistName = (row['Product Specialist Name'] || '').trim();
+                const lineName = (row['Line'] || '').trim();
+
+                if (!isUpdate && (!specialistName || !lineName)) {
+                    failures.push({ row, reason: 'New doctor requires: Product Specialist Name and Line' });
                     continue;
                 }
 
-                // Ensure primary line
-                const lineId = await ensureLine(lineName);
+                // Build update object with only provided fields
+                const updateData = {};
+
+                // Handle primary specialist and line (only if provided)
+                if (specialistName) {
+                    const specialist = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialistName.toLowerCase());
+                    if (!specialist) {
+                        failures.push({ row, reason: `Product Specialist not found: ${specialistName}` });
+                        continue;
+                    }
+                    updateData.owner_employee_id = specialist.id;
+
+                    if (lineName) {
+                        updateData.line_id = await ensureLine(lineName);
+                    }
+                }
 
                 // Process secondary specialist (PS 2)
                 const specialist2Name = (row['Product Specialist 2 Name'] || '').trim();
                 const line2Name = (row['PS 2 Line'] || '').trim();
-                let specialist2Id = null;
-                let line2Id = null;
                 if (specialist2Name) {
                     const specialist2 = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialist2Name.toLowerCase());
                     if (specialist2) {
-                        specialist2Id = specialist2.id;
-                        line2Id = line2Name ? await ensureLine(line2Name) : specialist2.line_id;
+                        updateData.secondary_employee_id = specialist2.id;
+                        updateData.secondary_line_id = line2Name ? await ensureLine(line2Name) : specialist2.line_id;
                     }
                 }
 
                 // Process tertiary specialist (PS 3)
                 const specialist3Name = (row['Product Specialist 3 Name'] || '').trim();
                 const line3Name = (row['PS 3 Line'] || '').trim();
-                let specialist3Id = null;
-                let line3Id = null;
                 if (specialist3Name) {
                     const specialist3 = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialist3Name.toLowerCase());
                     if (specialist3) {
-                        specialist3Id = specialist3.id;
-                        line3Id = line3Name ? await ensureLine(line3Name) : specialist3.line_id;
+                        updateData.tertiary_employee_id = specialist3.id;
+                        updateData.tertiary_line_id = line3Name ? await ensureLine(line3Name) : specialist3.line_id;
                     }
                 }
 
                 // Process quaternary specialist (PS 4)
                 const specialist4Name = (row['Product Specialist 4 Name'] || '').trim();
                 const line4Name = (row['PS 4 Line'] || '').trim();
-                let specialist4Id = null;
-                let line4Id = null;
                 if (specialist4Name) {
                     const specialist4 = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialist4Name.toLowerCase());
                     if (specialist4) {
-                        specialist4Id = specialist4.id;
-                        line4Id = line4Name ? await ensureLine(line4Name) : specialist4.line_id;
+                        updateData.quaternary_employee_id = specialist4.id;
+                        updateData.quaternary_line_id = line4Name ? await ensureLine(line4Name) : specialist4.line_id;
                     }
                 }
 
                 // Process quinary specialist (PS 5)
                 const specialist5Name = (row['Product Specialist 5 Name'] || '').trim();
                 const line5Name = (row['PS 5 Line'] || '').trim();
-                let specialist5Id = null;
-                let line5Id = null;
                 if (specialist5Name) {
                     const specialist5 = state.employees.find((emp) => emp.full_name?.toLowerCase() === specialist5Name.toLowerCase());
                     if (specialist5) {
-                        specialist5Id = specialist5.id;
-                        line5Id = line5Name ? await ensureLine(line5Name) : specialist5.line_id;
+                        updateData.quinary_employee_id = specialist5.id;
+                        updateData.quinary_line_id = line5Name ? await ensureLine(line5Name) : specialist5.line_id;
                     }
                 }
 
-                // Insert doctor with all specialists
-                await handleSupabase(
-                    supabase
-                        .from('doctors')
-                        .insert({
-                            name,
-                            owner_employee_id: specialist.id,
-                            line_id: lineId,
-                            secondary_employee_id: specialist2Id,
-                            secondary_line_id: line2Id,
-                            tertiary_employee_id: specialist3Id,
-                            tertiary_line_id: line3Id,
-                            quaternary_employee_id: specialist4Id,
-                            quaternary_line_id: line4Id,
-                            quinary_employee_id: specialist5Id,
-                            quinary_line_id: line5Id,
-                            specialty: (row['Specialty'] || '').trim() || null,
-                            phone: (row['Phone'] || '').trim() || null,
-                            email_address: (row['Email Address'] || '').trim() || null,
-                            status: APPROVAL_STATUS.APPROVED,
-                            admin_id: state.session.employeeId,
-                            created_by: state.session.employeeId,
-                            approved_at: new Date().toISOString()
-                        }),
-                    'bulk insert doctor'
-                );
-                successCount++;
+                // Handle optional fields (only update if provided)
+                const specialty = (row['Specialty'] || '').trim();
+                const phone = (row['Phone'] || '').trim();
+                const email = (row['Email Address'] || '').trim();
+
+                if (specialty) updateData.specialty = specialty;
+                if (phone) updateData.phone = phone;
+                if (email) updateData.email_address = email;
+
+                if (isUpdate) {
+                    // UPDATE existing doctor
+                    updateData.updated_at = new Date().toISOString();
+
+                    await handleSupabase(
+                        supabase
+                            .from('doctors')
+                            .update(updateData)
+                            .eq('id', existingDoctor.id),
+                        'bulk update doctor'
+                    );
+                    updateCount++;
+                } else {
+                    // INSERT new doctor
+                    await handleSupabase(
+                        supabase
+                            .from('doctors')
+                            .insert({
+                                name,
+                                ...updateData,
+                                status: APPROVAL_STATUS.APPROVED,
+                                admin_id: state.session.employeeId,
+                                created_by: state.session.employeeId,
+                                approved_at: new Date().toISOString()
+                            }),
+                        'bulk insert doctor'
+                    );
+                    insertCount++;
+                }
             } catch (err) {
                 failures.push({ row, reason: `Error: ${err.message}` });
             }
@@ -5522,10 +5556,21 @@ async function processDoctorUpload(file) {
         await loadDoctors();
         renderDoctorsSection({ refreshFilters: true });
 
+        const successCount = insertCount + updateCount;
+        let message = '';
+
+        if (insertCount > 0 && updateCount > 0) {
+            message = `✓ ${insertCount} doctors added, ${updateCount} doctors updated`;
+        } else if (insertCount > 0) {
+            message = `✓ ${insertCount} doctors added`;
+        } else if (updateCount > 0) {
+            message = `✓ ${updateCount} doctors updated`;
+        }
+
         if (failures.length > 0) {
-            return { success: false, message: `Upload completed: ${successCount} doctors uploaded successfully, ${failures.length} rows skipped.\n\nFirst few errors:\n${failures.slice(0, 3).map(f => f.reason).join('\n')}` };
+            return { success: false, message: `Upload completed: ${message}. ${failures.length} rows skipped.\n\nFirst few errors:\n${failures.slice(0, 3).map(f => f.reason).join('\n')}` };
         } else {
-            return { success: true, message: `✓ All ${successCount} doctors uploaded successfully!` };
+            return { success: true, message: `${message} successfully!` };
         }
     } catch (error) {
         return { success: false, message: `Upload failed: ${handleError(error)}` };
@@ -5667,11 +5712,16 @@ function setupExportButtons() {
             owner_name: 'Product Specialist',
             secondary_owner_name: 'Product Specialist 2',
             tertiary_owner_name: 'Product Specialist 3',
+            quaternary_owner_name: 'Product Specialist 4',
+            quinary_owner_name: 'Product Specialist 5',
             line_name: 'Line',
             secondary_line_name: 'PS 2 Line',
             tertiary_line_name: 'PS 3 Line',
+            quaternary_line_name: 'PS 4 Line',
+            quinary_line_name: 'PS 5 Line',
             specialty: 'Specialty',
             phone: 'Phone',
+            email_address: 'Email Address',
             status: 'Status'
         });
     });
