@@ -28,7 +28,7 @@ export const NOTIFICATION_TYPES = Object.freeze({
 
 export const LOCAL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-export const MAX_PRODUCTS_PER_CASE = 4;
+export const MAX_PRODUCTS_PER_CASE = 7;
 
 export const STATUS_LABELS = {
     [APPROVAL_STATUS.PENDING_MANAGER]: 'Pending Manager',

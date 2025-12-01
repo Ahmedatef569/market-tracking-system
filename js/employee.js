@@ -44,7 +44,8 @@ import {
     calculateCasesByProductSpecialist,
     calculateCasesByProduct,
     calculateUnitsByProductSpecialist,
-    calculateUnitsByProduct
+    calculateUnitsByProduct,
+    attachProductsToggle
 } from './caseAnalytics.js';
 
 ensureThemeApplied();
@@ -1485,6 +1486,10 @@ function renderCasesTable(cases) {
     state.tables.cases = createTable('ps-cases-table', columns, tableData, {
         height: 520,
         initialSort: [{ column: 'created_at', dir: 'desc' }]
+    });
+    attachProductsToggle(state.tables.cases, {
+        anchorField: 'product3_units',
+        storageKey: 'employee_cases_products_toggle'
     });
 }
 

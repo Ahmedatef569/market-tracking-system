@@ -45,7 +45,8 @@ import {
     calculateCasesByProductSpecialist,
     calculateCasesByProduct,
     calculateUnitsByProductSpecialist,
-    calculateUnitsByProduct
+    calculateUnitsByProduct,
+    attachProductsToggle
 } from './caseAnalytics.js';
 
 ensureThemeApplied();
@@ -1802,6 +1803,10 @@ function renderTeamCasesTable(cases = []) {
     state.tables.teamCases = createTable('team-cases-table', columns, tableData, {
         height: 520,
         initialSort: [{ column: 'created_at', dir: 'desc' }]
+    });
+    attachProductsToggle(state.tables.teamCases, {
+        anchorField: 'product3_units',
+        storageKey: 'manager_team_cases_products_toggle'
     });
 }
 
@@ -4442,6 +4447,10 @@ function renderMyCasesTable(cases = []) {
     state.tables.myCases = createTable('manager-cases-table', columns, tableData, {
         height: 520,
         initialSort: [{ column: 'created_at', dir: 'desc' }]
+    });
+    attachProductsToggle(state.tables.myCases, {
+        anchorField: 'product3_units',
+        storageKey: 'manager_my_cases_products_toggle'
     });
 }
 

@@ -120,10 +120,10 @@ export function groupCaseProducts(caseProducts = []) {
     return map;
 }
 
-export function mapCaseProductColumns(caseProductsMap, caseId, limit = 3) {
+export function mapCaseProductColumns(caseProductsMap, caseId, limit = 7) {
     const products = [...(caseProductsMap.get(caseId) || [])].slice(0, limit);
     const filler = { name: '', type: '', company: '', category: '', sub_category: '', units: 0 };
-    const padded = [...products, filler, filler, filler].slice(0, limit);
+    const padded = [...products, filler, filler, filler, filler, filler, filler, filler].slice(0, limit);
     return padded.map((product) => {
         if (!product?.product_name) return { ...filler };
         return {
@@ -138,7 +138,7 @@ export function mapCaseProductColumns(caseProductsMap, caseId, limit = 3) {
 }
 
 export function buildCaseTableRow(caseItem, caseProductsMap) {
-    const [product1, product2, product3] = mapCaseProductColumns(caseProductsMap, caseItem.id);
+    const [product1, product2, product3, product4, product5, product6, product7] = mapCaseProductColumns(caseProductsMap, caseItem.id);
     return {
         id: caseItem.id,
         specialist: caseItem.submitted_by_name,
@@ -167,7 +167,31 @@ export function buildCaseTableRow(caseItem, caseProductsMap) {
         product3_company: product3.company,
         product3_category: product3.category,
         product3_sub_category: product3.sub_category,
-        product3_units: product3.units
+        product3_units: product3.units,
+        product4_name: product4.name,
+        product4_type: product4.type,
+        product4_company: product4.company,
+        product4_category: product4.category,
+        product4_sub_category: product4.sub_category,
+        product4_units: product4.units,
+        product5_name: product5.name,
+        product5_type: product5.type,
+        product5_company: product5.company,
+        product5_category: product5.category,
+        product5_sub_category: product5.sub_category,
+        product5_units: product5.units,
+        product6_name: product6.name,
+        product6_type: product6.type,
+        product6_company: product6.company,
+        product6_category: product6.category,
+        product6_sub_category: product6.sub_category,
+        product6_units: product6.units,
+        product7_name: product7.name,
+        product7_type: product7.type,
+        product7_company: product7.company,
+        product7_category: product7.category,
+        product7_sub_category: product7.sub_category,
+        product7_units: product7.units
     };
 }
 
@@ -502,6 +526,30 @@ export function buildCaseTableColumns(tableFormatters) {
         { title: 'P3 Category', field: 'product3_category', minWidth: 160, headerFilter: 'input' },
         { title: 'P3 Sub-category', field: 'product3_sub_category', minWidth: 180, headerFilter: 'input' },
         { title: 'P3 Units', field: 'product3_units', formatter: tableFormatters.number(), width: 140 },
+        { title: 'Product 4', field: 'product4_name', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P4 Type', field: 'product4_type', width: 130, visible: false },
+        { title: 'P4 Company', field: 'product4_company', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P4 Category', field: 'product4_category', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P4 Sub-category', field: 'product4_sub_category', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P4 Units', field: 'product4_units', formatter: tableFormatters.number(), width: 140, visible: false },
+        { title: 'Product 5', field: 'product5_name', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P5 Type', field: 'product5_type', width: 130, visible: false },
+        { title: 'P5 Company', field: 'product5_company', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P5 Category', field: 'product5_category', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P5 Sub-category', field: 'product5_sub_category', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P5 Units', field: 'product5_units', formatter: tableFormatters.number(), width: 140, visible: false },
+        { title: 'Product 6', field: 'product6_name', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P6 Type', field: 'product6_type', width: 130, visible: false },
+        { title: 'P6 Company', field: 'product6_company', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P6 Category', field: 'product6_category', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P6 Sub-category', field: 'product6_sub_category', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P6 Units', field: 'product6_units', formatter: tableFormatters.number(), width: 140, visible: false },
+        { title: 'Product 7', field: 'product7_name', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P7 Type', field: 'product7_type', width: 130, visible: false },
+        { title: 'P7 Company', field: 'product7_company', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P7 Category', field: 'product7_category', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P7 Sub-category', field: 'product7_sub_category', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P7 Units', field: 'product7_units', formatter: tableFormatters.number(), width: 140, visible: false },
         { title: 'Company Units', field: 'company_units', formatter: tableFormatters.number(), width: 150, visible: false },
         { title: 'Competitor Units', field: 'competitor_units', formatter: tableFormatters.number(), width: 160, visible: false },
     ];
@@ -537,7 +585,31 @@ export function buildCaseExportRows(cases = [], caseProductsMap = new Map()) {
             product3_company: row.product3_company,
             product3_category: row.product3_category,
             product3_sub_category: row.product3_sub_category,
-            product3_units: row.product3_units
+            product3_units: row.product3_units,
+            product4_name: row.product4_name,
+            product4_type: row.product4_type,
+            product4_company: row.product4_company,
+            product4_category: row.product4_category,
+            product4_sub_category: row.product4_sub_category,
+            product4_units: row.product4_units,
+            product5_name: row.product5_name,
+            product5_type: row.product5_type,
+            product5_company: row.product5_company,
+            product5_category: row.product5_category,
+            product5_sub_category: row.product5_sub_category,
+            product5_units: row.product5_units,
+            product6_name: row.product6_name,
+            product6_type: row.product6_type,
+            product6_company: row.product6_company,
+            product6_category: row.product6_category,
+            product6_sub_category: row.product6_sub_category,
+            product6_units: row.product6_units,
+            product7_name: row.product7_name,
+            product7_type: row.product7_type,
+            product7_company: row.product7_company,
+            product7_category: row.product7_category,
+            product7_sub_category: row.product7_sub_category,
+            product7_units: row.product7_units
         };
     });
 }
@@ -568,9 +640,130 @@ export const CASE_EXPORT_HEADERS = {
     product3_category: 'P3 Category',
     product3_sub_category: 'P3 Sub-category',
     product3_units: 'P3 Units',
+    product4_name: 'Product 4',
+    product4_type: 'P4 Type',
+    product4_company: 'P4 Company',
+    product4_category: 'P4 Category',
+    product4_sub_category: 'P4 Sub-category',
+    product4_units: 'P4 Units',
+    product5_name: 'Product 5',
+    product5_type: 'P5 Type',
+    product5_company: 'P5 Company',
+    product5_category: 'P5 Category',
+    product5_sub_category: 'P5 Sub-category',
+    product5_units: 'P5 Units',
+    product6_name: 'Product 6',
+    product6_type: 'P6 Type',
+    product6_company: 'P6 Company',
+    product6_category: 'P6 Category',
+    product6_sub_category: 'P6 Sub-category',
+    product6_units: 'P6 Units',
+    product7_name: 'Product 7',
+    product7_type: 'P7 Type',
+    product7_company: 'P7 Company',
+    product7_category: 'P7 Category',
+    product7_sub_category: 'P7 Sub-category',
+    product7_units: 'P7 Units',
     company_units: 'Company Units',
     competitor_units: 'Competitor Units'
 };
+
+/**
+ * Attach toggle button to show/hide products 4-7 columns in case tables
+ * @param {Object} table - Tabulator table instance
+ * @param {Object} options - Configuration options
+ * @param {string} options.anchorField - Field name to attach the toggle button to (e.g., 'product3_units')
+ * @param {string} options.storageKey - LocalStorage key to persist toggle state
+ */
+export function attachProductsToggle(table, { anchorField = 'product3_units', storageKey = 'cases_products_toggle' } = {}) {
+    if (!table || !table.getColumn || !anchorField) return;
+    if (table._productsToggleInitialized) return;
+
+    const toggleFields = [
+        'product4_name', 'product4_type', 'product4_company', 'product4_category', 'product4_sub_category', 'product4_units',
+        'product5_name', 'product5_type', 'product5_company', 'product5_category', 'product5_sub_category', 'product5_units',
+        'product6_name', 'product6_type', 'product6_company', 'product6_category', 'product6_sub_category', 'product6_units',
+        'product7_name', 'product7_type', 'product7_company', 'product7_category', 'product7_sub_category', 'product7_units'
+    ];
+
+    const initialize = () => {
+        const anchorColumn = table.getColumn(anchorField);
+        if (!anchorColumn || !anchorColumn.getElement) return;
+        const headerEl = anchorColumn.getElement();
+        const titleEl = headerEl?.querySelector('.tabulator-col-title');
+        if (!titleEl || titleEl.querySelector('.products-toggle-btn')) return;
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = 'btn btn-sm btn-outline-ghost products-toggle-btn';
+        toggleBtn.textContent = '+';
+        toggleBtn.setAttribute('aria-expanded', 'false');
+        toggleBtn.setAttribute('aria-label', 'Show products 4-7 columns');
+        toggleBtn.style.marginLeft = '0.5rem';
+
+        titleEl.classList.add('products-toggle-title');
+        titleEl.appendChild(toggleBtn);
+
+        const getStoredState = () => {
+            if (!storageKey) return null;
+            try {
+                return localStorage.getItem(storageKey);
+            } catch {
+                return null;
+            }
+        };
+
+        const setStoredState = (expanded) => {
+            if (!storageKey) return;
+            try {
+                localStorage.setItem(storageKey, expanded ? '1' : '0');
+            } catch {
+                // Ignore storage errors
+            }
+        };
+
+        const applyState = (expanded) => {
+            toggleFields.forEach((field) => {
+                const column = table.getColumn(field);
+                if (!column) return;
+                if (expanded) {
+                    column.show();
+                } else {
+                    column.hide();
+                }
+            });
+            toggleBtn.textContent = expanded ? '−' : '+';
+            toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            toggleBtn.setAttribute(
+                'aria-label',
+                expanded ? 'Hide products 4-7 columns' : 'Show products 4-7 columns'
+            );
+            setStoredState(expanded);
+        };
+
+        const stored = getStoredState();
+        let expanded = stored !== null ? stored === '1' : false;
+
+        applyState(expanded);
+
+        toggleBtn.addEventListener('click', () => {
+            expanded = !expanded;
+            applyState(expanded);
+        });
+
+        table._productsToggleInitialized = true;
+    };
+
+    if (!table.getColumn(anchorField)) {
+        table.on('tableBuilt', () => {
+            if (table._productsToggleInitialized) return;
+            initialize();
+        });
+        return;
+    }
+
+    initialize();
+}
 
 export function collectCaseFilterOptions(caseProducts = [], products = []) {
     const companies = distinct(caseProducts.map((item) => item.company_name).filter(Boolean)).sort((a, b) =>

@@ -45,7 +45,8 @@ import {
     calculateCasesByProductSpecialist,
     calculateCasesByProduct,
     calculateUnitsByProductSpecialist,
-    calculateUnitsByProduct
+    calculateUnitsByProduct,
+    attachProductsToggle
 } from './caseAnalytics.js';
 
 ensureThemeApplied();
@@ -3365,6 +3366,10 @@ function renderCasesTable(cases) {
     });
     bindTableActions(state.tables.cases, {
         delete: (rowData) => deleteCase(rowData.id)
+    });
+    attachProductsToggle(state.tables.cases, {
+        anchorField: 'product3_units',
+        storageKey: 'admin_cases_products_toggle'
     });
 }
 
