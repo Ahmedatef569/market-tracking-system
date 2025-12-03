@@ -1,6 +1,7 @@
 import { supabase, handleSupabase } from './supabaseClient.js';
 import { requireAuth, logout, updatePassword, hydrateSession } from './session.js';
 import { ROLES, APPROVAL_STATUS, ACCOUNT_TYPES, MAX_PRODUCTS_PER_CASE } from './constants.js';
+import { showWelcomePopup } from './welcomePopup.js';
 import {
     formatDate,
     formatNumber,
@@ -137,6 +138,9 @@ async function init() {
     refreshFormHosts();
     renderAll();
     await refreshNotifications();
+
+    // Show welcome popup after everything is loaded
+    showWelcomePopup(state.session, 3000);
 }
 
 function setupHeader() {
