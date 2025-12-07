@@ -3537,6 +3537,7 @@ async function processApproval(record, approve = true) {
                     'delete rejected doctor'
                 );
             }
+            await removeAdminNotification('doctor', record.id);
         }
 
         if (record.type === 'account') {
@@ -3563,6 +3564,7 @@ async function processApproval(record, approve = true) {
                     'delete rejected account'
                 );
             }
+            await removeAdminNotification('account', record.id);
         }
 
         if (record.type === 'case') {
@@ -3596,6 +3598,7 @@ async function processApproval(record, approve = true) {
                     'delete rejected case'
                 );
             }
+            await removeAdminNotification('case', record.id);
         }
 
         const targetEmployeeId = payload.owner_employee_id || payload.submitted_by_id;
@@ -5867,6 +5870,23 @@ function renderAccountStats(accounts = state.accounts) {
         ${accountTypeCards}
     `;
 }
+async function removeAdminNotification(entityType, entityId) {
+    try {
+        await handleSupabase(
+            supabase
+                .from('notifications')
+                .delete()
+                .eq('user_id', state.session.userId)
+                .eq('entity_type', entityType)
+                .eq('entity_id', entityId),
+            'remove admin notification'
+        );
+        await refreshNotifications();
+    } catch (error) {
+        console.error('Error removing admin notification:', error);
+    }
+}
+
 async function notifyEmployee(employeeId, message, entityType, entityId) {
     if (!employeeId) return;
     const user = state.users.find((usr) => usr.employee_id === employeeId);

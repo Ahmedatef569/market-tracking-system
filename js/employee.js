@@ -2495,6 +2495,34 @@ async function handleMarkNotificationsRead() {
     await refreshNotifications();
 }
 
+async function notifyManagerUsers(entityType, entityId, entityName) {
+    try {
+        const { data: managerUsers, error } = await supabase
+            .from('users')
+            .select('id, username')
+            .eq('role', 'manager');
+
+        if (error || !managerUsers || managerUsers.length === 0) {
+            console.warn('No manager users found to notify');
+            return;
+        }
+
+        const entityLabel = entityType.charAt(0).toUpperCase() + entityType.slice(1);
+        const message = `New ${entityLabel} "${entityName}" pending your approval`;
+
+        for (const manager of managerUsers) {
+            await createNotification({
+                userId: manager.id,
+                entityType,
+                entityId,
+                message
+            });
+        }
+    } catch (error) {
+        console.error('Error notifying manager users:', error);
+    }
+}
+
 function updateNotificationsUI(notifications = []) {
     if (!elements.notificationsIndicator || !elements.notificationsContainer) return;
     if (notifications.length) {
@@ -2866,7 +2894,7 @@ async function handleDoctorSubmit(event) {
     try {
         setLoadingState(submitButton, true, 'Submitting...');
         const lineId = payload.line_name ? await ensureLineForSpecialist(payload.line_name.trim()) : state.session.employee?.lineId;
-        await handleSupabase(
+        const inserted = await handleSupabase(
             supabase
                 .from('doctors')
                 .insert({
@@ -2878,10 +2906,13 @@ async function handleDoctorSubmit(event) {
                     email_address: payload.email_address || null,
                     status: APPROVAL_STATUS.PENDING_MANAGER,
                     created_by: state.session.employeeId
-                }),
+                })
+                .select('id')
+                .single(),
             'submit doctor'
         );
 
+        await notifyManagerUsers('doctor', inserted.id, payload.name.trim());
         await loadDoctors();
         buildApprovalDataset();
         renderDoctorSection({ refreshFilters: true });
@@ -3089,7 +3120,7 @@ async function handleAccountSubmit(event) {
     try{
         setLoadingState(submitButton, true, 'Submitting...');
         const lineId = payload.line_name ? await ensureLineForSpecialist(payload.line_name.trim()) : state.session.employee?.lineId;
-        await handleSupabase(
+        const inserted = await handleSupabase(
             supabase
                 .from('accounts')
                 .insert({
@@ -3101,10 +3132,13 @@ async function handleAccountSubmit(event) {
                     governorate: payload.governorate || null,
                     status: APPROVAL_STATUS.PENDING_MANAGER,
                     created_by: state.session.employeeId
-                }),
+                })
+                .select('id')
+                .single(),
             'submit account'
         );
 
+        await notifyManagerUsers('account', inserted.id, payload.name.trim());
         await loadAccounts();
         buildApprovalDataset();
         renderAccountSection({ refreshFilters: true });
@@ -3576,6 +3610,7 @@ async function handleCaseSubmit(event) {
             'insert case products'
         );
 
+        await notifyManagerUsers('case', caseId, caseRecord.case_code);
         await loadCases();
         buildApprovalDataset();
         renderCasesSection();

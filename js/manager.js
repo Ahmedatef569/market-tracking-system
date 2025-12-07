@@ -3024,6 +3024,8 @@ async function handleTeamApproval(record, approve = true) {
                         .eq('id', record.id),
                     'manager doctor approval'
                 );
+                await removeManagerNotification('doctor', record.id);
+                await notifyAdminUsers('doctor', record.id, record.name);
             } else {
                 await handleSupabase(
                     supabase
@@ -3032,6 +3034,7 @@ async function handleTeamApproval(record, approve = true) {
                         .eq('id', record.id),
                     'delete rejected doctor'
                 );
+                await removeManagerNotification('doctor', record.id);
             }
         }
 
@@ -3049,6 +3052,8 @@ async function handleTeamApproval(record, approve = true) {
                         .eq('id', record.id),
                     'manager account approval'
                 );
+                await removeManagerNotification('account', record.id);
+                await notifyAdminUsers('account', record.id, record.name);
             } else {
                 await handleSupabase(
                     supabase
@@ -3057,6 +3062,7 @@ async function handleTeamApproval(record, approve = true) {
                         .eq('id', record.id),
                     'delete rejected account'
                 );
+                await removeManagerNotification('account', record.id);
             }
         }
 
@@ -3074,6 +3080,7 @@ async function handleTeamApproval(record, approve = true) {
                         .eq('id', record.id),
                     'manager case approval'
                 );
+                await removeManagerNotification('case', record.id);
             } else {
                 await handleSupabase(
                     supabase
@@ -3089,6 +3096,7 @@ async function handleTeamApproval(record, approve = true) {
                         .eq('id', record.id),
                     'delete rejected case'
                 );
+                await removeManagerNotification('case', record.id);
             }
         }
 
@@ -3129,6 +3137,51 @@ function renderMyApprovalsTable() {
         initialSort: [{ column: 'created_at', dir: 'desc' }]
     });
 }
+async function removeManagerNotification(entityType, entityId) {
+    try {
+        await handleSupabase(
+            supabase
+                .from('notifications')
+                .delete()
+                .eq('user_id', state.session.userId)
+                .eq('entity_type', entityType)
+                .eq('entity_id', entityId),
+            'remove manager notification'
+        );
+        await refreshNotifications();
+    } catch (error) {
+        console.error('Error removing manager notification:', error);
+    }
+}
+
+async function notifyAdminUsers(entityType, entityId, entityName) {
+    try {
+        const { data: adminUsers, error } = await supabase
+            .from('users')
+            .select('id, username')
+            .eq('role', 'admin');
+
+        if (error || !adminUsers || adminUsers.length === 0) {
+            console.warn('No admin users found to notify');
+            return;
+        }
+
+        const entityLabel = entityType.charAt(0).toUpperCase() + entityType.slice(1);
+        const message = `New ${entityLabel} "${entityName}" pending your approval`;
+
+        for (const admin of adminUsers) {
+            await createNotification({
+                userId: admin.id,
+                entityType,
+                entityId,
+                message
+            });
+        }
+    } catch (error) {
+        console.error('Error notifying admin users:', error);
+    }
+}
+
 async function notifyEmployee(employeeId, message, entityType, entityId) {
     if (!employeeId) return;
     const { data, error } = await supabase
@@ -3557,8 +3610,11 @@ async function handleTeamDoctorSubmit(event) {
                     .eq('id', payload.doctor_id),
                 'update pending doctor'
             );
+            // Remove manager notification and notify admin
+            await removeManagerNotification('doctor', payload.doctor_id);
+            await notifyAdminUsers('doctor', payload.doctor_id, payload.name.trim());
         } else {
-            await handleSupabase(
+            const inserted = await handleSupabase(
                 supabase
                     .from('doctors')
                     .insert({
@@ -3567,9 +3623,13 @@ async function handleTeamDoctorSubmit(event) {
                         manager_id: state.session.employeeId,
                         admin_id: null,
                         created_by: state.session.employeeId
-                    }),
+                    })
+                    .select('id')
+                    .single(),
                 'manager add doctor'
             );
+            // Notify admin for new doctor
+            await notifyAdminUsers('doctor', inserted.id, payload.name.trim());
         }
 
         await loadTeamDoctors();
@@ -3963,8 +4023,11 @@ async function handleTeamAccountSubmit(event) {
                     .eq('id', payload.account_id),
                 'update pending account'
             );
+            // Remove manager notification and notify admin
+            await removeManagerNotification('account', payload.account_id);
+            await notifyAdminUsers('account', payload.account_id, payload.name.trim());
         } else {
-            await handleSupabase(
+            const inserted = await handleSupabase(
                 supabase
                     .from('accounts')
                     .insert({
@@ -3973,9 +4036,13 @@ async function handleTeamAccountSubmit(event) {
                         manager_id: state.session.employeeId,
                         admin_id: null,
                         created_by: state.session.employeeId
-                    }),
+                    })
+                    .select('id')
+                    .single(),
                 'manager add account'
             );
+            // Notify admin for new account
+            await notifyAdminUsers('account', inserted.id, payload.name.trim());
         }
 
         await loadTeamAccounts();
