@@ -2021,7 +2021,7 @@ function toggleFormReadOnly(form, readonly) {
     });
 }
 
-function showReviewModal(title, content) {
+function showReviewModal(title, content, options = {}) {
     const modalEl = document.getElementById('modalEntityForm');
     if (!modalEl || !window.bootstrap) return;
     const modalTitle = modalEl.querySelector('#modalEntityFormTitle');
@@ -2029,12 +2029,51 @@ function showReviewModal(title, content) {
     const modalFooter = modalEl.querySelector('.modal-footer');
     if (modalTitle) modalTitle.textContent = title;
     if (modalBody) modalBody.innerHTML = content;
-    if (modalFooter) modalFooter.classList.add('d-none');
+
+    // Handle footer buttons for case review
+    if (options.showCaseActions && options.caseRecord) {
+        if (modalFooter) {
+            modalFooter.classList.remove('d-none');
+            modalFooter.innerHTML = `
+                <button type="button" class="btn btn-outline-ghost" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-negative" id="modalRejectCase">
+                    <i class="bi bi-x"></i> Reject
+                </button>
+                <button type="button" class="btn btn-gradient" id="modalApproveCase">
+                    <i class="bi bi-check2"></i> Approve
+                </button>
+            `;
+
+            // Attach event listeners
+            const approveBtn = modalFooter.querySelector('#modalApproveCase');
+            const rejectBtn = modalFooter.querySelector('#modalRejectCase');
+
+            if (approveBtn) {
+                approveBtn.addEventListener('click', async () => {
+                    await processApproval(options.caseRecord, true);
+                    window.bootstrap.Modal.getInstance(modalEl)?.hide();
+                });
+            }
+
+            if (rejectBtn) {
+                rejectBtn.addEventListener('click', async () => {
+                    await processApproval(options.caseRecord, false);
+                    window.bootstrap.Modal.getInstance(modalEl)?.hide();
+                });
+            }
+        }
+    } else {
+        if (modalFooter) modalFooter.classList.add('d-none');
+    }
+
     modalEl.setAttribute('data-current-form', '');
     const modalInstance = window.bootstrap.Modal.getOrCreateInstance(modalEl);
     const cleanup = () => {
         if (modalBody) modalBody.innerHTML = '';
-        if (modalFooter) modalFooter.classList.remove('d-none');
+        if (modalFooter) {
+            modalFooter.classList.remove('d-none');
+            modalFooter.innerHTML = '<button type="button" class="btn btn-outline-ghost" data-bs-dismiss="modal">Close</button>';
+        }
         modalEl.removeEventListener('hidden.bs.modal', cleanup);
     };
     modalEl.addEventListener('hidden.bs.modal', cleanup, { once: true });
@@ -2676,7 +2715,18 @@ function populateCaseReview(id, payload = {}) {
         </div>
     `;
 
-    showReviewModal(`Review Case ${caseRecord.case_code || ''}`, content);
+    // Create record object for approval actions
+    const recordForApproval = {
+        id: id,
+        type: 'case',
+        name: caseRecord.case_code || `Case ${id.slice(0, 6)}`,
+        payload: caseRecord
+    };
+
+    showReviewModal(`Review Case ${caseRecord.case_code || ''}`, content, {
+        showCaseActions: true,
+        caseRecord: recordForApproval
+    });
 }
 
 async function deleteAccount(id) {
