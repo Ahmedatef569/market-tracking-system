@@ -2497,10 +2497,26 @@ async function handleMarkNotificationsRead() {
 
 async function notifyManagerUsers(entityType, entityId, entityName) {
     try {
+        // Get the employee's direct manager and line manager IDs
+        const directManagerId = state.session.employee?.directManagerId;
+        const lineManagerId = state.session.employee?.lineManagerId;
+
+        // Collect unique manager IDs (could be same person or different)
+        const managerIds = new Set();
+        if (directManagerId) managerIds.add(directManagerId);
+        if (lineManagerId) managerIds.add(lineManagerId);
+
+        if (managerIds.size === 0) {
+            console.warn('No manager assigned to this employee');
+            return;
+        }
+
+        // Get user IDs for these manager employees
         const { data: managerUsers, error } = await supabase
             .from('users')
-            .select('id, username')
-            .eq('role', 'manager');
+            .select('id, username, employee_id')
+            .eq('role', 'manager')
+            .in('employee_id', Array.from(managerIds));
 
         if (error || !managerUsers || managerUsers.length === 0) {
             console.warn('No manager users found to notify');
