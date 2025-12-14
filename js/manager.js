@@ -228,6 +228,12 @@ function setupModals() {
     }
 
     elements.btnNotifications?.addEventListener('click', () => {
+        // Add ringing animation on click
+        const bellButton = elements.btnNotifications;
+        if (bellButton) {
+            bellButton.classList.add('ring');
+            setTimeout(() => bellButton.classList.remove('ring'), 1500);
+        }
         bootstrapComponents.notificationsOffcanvas?.show();
     });
 
