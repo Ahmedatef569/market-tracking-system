@@ -891,22 +891,38 @@ async function handleMarkNotificationsRead() {
 
 function updateNotificationsUI(notifications = []) {
     if (!elements.notificationsIndicator || !elements.notificationsContainer) return;
+
+    // Trigger bell ringing animation if there are new notifications
     if (notifications.length) {
         elements.notificationsIndicator.classList.remove('d-none');
+
+        // Add ringing animation to bell icon
+        const bellButton = document.getElementById('btnNotifications');
+        if (bellButton && !bellButton.classList.contains('ring')) {
+            bellButton.classList.add('ring');
+            setTimeout(() => bellButton.classList.remove('ring'), 1500);
+        }
+
         elements.notificationsContainer.innerHTML = notifications
             .map(
                 (item) => `
-                <div class="card-glass mb-3">
-                    <div class="d-flex justify-content-between">
-                        <span>${item.message}</span>
-                        <small class="text-secondary">${formatDate(item.created_at)}</small>
+                <div class="notification-item ${item.is_read ? '' : 'unread'}" style="position: relative;">
+                    <div class="d-flex flex-column gap-2">
+                        <span style="font-size: 0.95rem; line-height: 1.5;">${item.message}</span>
+                        <small class="text-secondary" style="font-size: 0.8rem;">
+                            <i class="bi bi-clock me-1"></i>${formatDate(item.created_at)}
+                        </small>
                     </div>
                 </div>`
             )
             .join('');
     } else {
         elements.notificationsIndicator.classList.add('d-none');
-        elements.notificationsContainer.innerHTML = '<p class="text-secondary">No new notifications.</p>';
+        elements.notificationsContainer.innerHTML = `
+            <div class="text-center py-5">
+                <i class="bi bi-bell-slash" style="font-size: 3rem; opacity: 0.3;"></i>
+                <p class="text-secondary mt-3 mb-0">No new notifications</p>
+            </div>`;
     }
 }
 async function loadLines() {
