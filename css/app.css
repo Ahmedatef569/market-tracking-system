@@ -176,6 +176,32 @@ a:hover {
     transform: scale(1.05);
 }
 
+/* Hamburger icon rotation animation */
+.toggle-sidebar i {
+    transition: transform 0.4s ease;
+    display: inline-block;
+}
+
+/* Desktop: Rotate 90° clockwise when sidebar is collapsed */
+.sidebar.collapsed .toggle-sidebar-desktop i {
+    transform: rotate(90deg);
+}
+
+/* Desktop: Horizontal when sidebar is expanded */
+.sidebar:not(.collapsed) .toggle-sidebar-desktop i {
+    transform: rotate(0deg);
+}
+
+/* Mobile: Horizontal by default (sidebar closed) */
+.toggle-sidebar-mobile i {
+    transform: rotate(0deg);
+}
+
+/* Mobile: Rotate 90° clockwise when button has rotated class */
+.toggle-sidebar-mobile.rotated i {
+    transform: rotate(90deg);
+}
+
 /* Desktop toggle button - inside sidebar */
 .toggle-sidebar-desktop {
     position: absolute;

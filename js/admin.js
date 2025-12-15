@@ -190,6 +190,8 @@ function setupSidebar() {
     // Mobile toggle button
     elements.btnToggleSidebar?.addEventListener('click', () => {
         elements.sidebar?.classList.toggle('open');
+        // Toggle rotation class on mobile button
+        elements.btnToggleSidebar?.classList.toggle('rotated');
     });
 
     // Desktop toggle button
@@ -205,6 +207,8 @@ function setupSidebar() {
             const clickedToggleButton = elements.btnToggleSidebar?.contains(e.target);
             if (!clickedInsideSidebar && !clickedToggleButton) {
                 elements.sidebar.classList.remove('open');
+                // Remove rotation class when closing sidebar
+                elements.btnToggleSidebar?.classList.remove('rotated');
             }
         }
     });
