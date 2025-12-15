@@ -2060,11 +2060,10 @@ function showReviewModal(title, content, options = {}) {
         if (modalFooter) {
             modalFooter.classList.remove('d-none');
             modalFooter.innerHTML = `
-                <button type="button" class="btn btn-outline-ghost" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-negative" id="modalRejectCase">
+                <button type="button" class="btn btn-sm btn-negative" id="modalRejectCase">
                     <i class="bi bi-x"></i> Reject
                 </button>
-                <button type="button" class="btn btn-gradient" id="modalApproveCase">
+                <button type="button" class="btn btn-sm btn-gradient" id="modalApproveCase">
                     <i class="bi bi-check2"></i> Approve
                 </button>
             `;

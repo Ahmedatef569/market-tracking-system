@@ -980,6 +980,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     filter: brightness(1.05);
 }
 
+/* Make btn-gradient same size as btn-negative when using btn-sm */
+.btn-gradient.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
 .btn-outline-ghost {
     border-radius: 999px;
     border: 1px solid rgba(148, 163, 184, 0.25);
@@ -1015,6 +1021,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 .btn-negative:hover {
     filter: brightness(1.05);
+}
+
+/* Make btn-negative consistent size when using btn-sm */
+.btn-negative.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
 }
 
 .btn-compact {
