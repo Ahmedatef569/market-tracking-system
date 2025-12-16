@@ -142,6 +142,7 @@ export function buildCaseTableRow(caseItem, caseProductsMap) {
     return {
         id: caseItem.id,
         specialist: caseItem.submitted_by_name,
+        line: caseItem.line_name || '',
         status: caseItem.status,
         account: caseItem.account_name,
         account_type: caseItem.account_type,
@@ -532,6 +533,7 @@ export function computeDualRowCaseMetrics(cases = [], caseProductsMap = new Map(
 export function buildCaseTableColumns(tableFormatters) {
     return [
         { title: 'Product Specialist', field: 'specialist', minWidth: 200, headerFilter: 'input', frozen: true },
+        { title: 'Line', field: 'line', width: 150, headerFilter: 'input' },
         { title: 'Status', field: 'status', formatter: tableFormatters.status, width: 140 },
         { title: 'Account', field: 'account', minWidth: 180, headerFilter: 'input' },
         { title: 'Account Type', field: 'account_type', width: 140 },
@@ -622,6 +624,7 @@ export function buildCaseExportRows(cases = [], caseProductsMap = new Map()) {
             case_code: row.case_code,
             case_date: row.case_date,
             specialist: row.specialist,
+            line: row.line,
             status: row.status,
             account: row.account,
             account_type: row.account_type,
@@ -708,6 +711,7 @@ export const CASE_EXPORT_HEADERS = {
     case_code: 'Case Code',
     case_date: 'Case Date',
     specialist: 'Product Specialist',
+    line: 'Line',
     status: 'Status',
     account: 'Account',
     account_type: 'Account Type',

@@ -68,18 +68,25 @@ const state = {
     tables: {},
     charts: {},
     filters: {
-        cases: {},
+        cases: {
+            line: ''
+        },
         approvals: {},
-        dashboard: {},
+        dashboard: {
+            line: ''
+        },
         products: {
+            line: '',
             company: '',
             category: '',
             type: ''
         },
         doctors: {
+            line: '',
             specialist: ''
         },
         accounts: {
+            line: '',
             specialist: '',
             accountType: ''
         }
@@ -227,6 +234,12 @@ function setupSidebar() {
         }
         bootstrapComponents.notificationsOffcanvas?.show();
     });
+}
+
+function getOldestLine() {
+    if (!state.lines || state.lines.length === 0) return '';
+    const sorted = [...state.lines].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    return sorted[0]?.id || '';
 }
 
 function setupModals() {
@@ -601,6 +614,8 @@ function buildApprovalsDataset() {
             name: doctor.name,
             ownerName: doctor.owner_name,
             submittedBy: doctor.owner_name,
+            lineName: doctor.line_name || '',
+            lineId: doctor.line_id || '',
             status: doctor.status,
             created_at: doctor.created_at,
             payload: doctor
@@ -611,6 +626,8 @@ function buildApprovalsDataset() {
             name: account.name,
             ownerName: account.owner_name,
             submittedBy: account.owner_name,
+            lineName: account.line_name || '',
+            lineId: account.line_id || '',
             status: account.status,
             created_at: account.created_at,
             payload: account
@@ -621,6 +638,8 @@ function buildApprovalsDataset() {
             name: caseItem.case_code || `Case ${caseItem.id.slice(0, 6)}`,
             ownerName: caseItem.submitted_by_name,
             submittedBy: caseItem.submitted_by_name,
+            lineName: caseItem.line_name || '',
+            lineId: caseItem.employee_line_id || '',
             status: caseItem.status,
             created_at: caseItem.created_at,
             payload: caseItem
@@ -1245,7 +1264,20 @@ function renderProductsSection(options = {}) {
 function renderProductFilters() {
     const container = document.getElementById('product-filters');
     if (!container) return;
-    const { company, category, type } = state.filters.products;
+
+    // Get lines that have employees assigned (filter out lines with no employees)
+    const linesWithEmployees = state.lines.filter(line =>
+        state.employees.some(emp => emp.line_id === line.id)
+    );
+
+    // Initialize line filter to oldest line if not set
+    if (!state.filters.products.line) {
+        const sorted = [...linesWithEmployees].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        state.filters.products.line = sorted[0]?.id || '';
+    }
+
+    const { line, company, category, type } = state.filters.products;
+    const lines = linesWithEmployees.map((l) => ({ id: l.id, name: l.name })).sort((a, b) => a.name.localeCompare(b.name));
     const companies = distinct(state.products.map((product) => product.company_name).filter(Boolean)).sort((a, b) =>
         a.localeCompare(b)
     );
@@ -1254,6 +1286,9 @@ function renderProductFilters() {
     );
     const types = ['Company', 'Competitor'];
 
+    if (line && !lines.find((l) => l.id === line)) {
+        state.filters.products.line = getOldestLine();
+    }
     if (company && !companies.includes(company)) {
         state.filters.products.company = '';
     }
@@ -1263,12 +1298,21 @@ function renderProductFilters() {
     if (type && !types.includes(type)) {
         state.filters.products.type = '';
     }
+    const selectedLine = state.filters.products.line;
     const selectedCompany = state.filters.products.company;
     const selectedCategory = state.filters.products.category;
     const selectedType = state.filters.products.type;
 
     container.innerHTML = `
         <div class="filters-row">
+            <select class="form-select form-select-sm" id="admin-filter-product-line" aria-label="Filter products by line">
+                ${lines
+                    .map(
+                        (item) =>
+                            `<option value="${item.id}"${item.id === selectedLine ? ' selected' : ''}>${item.name}</option>`
+                    )
+                    .join('')}
+            </select>
             <select class="form-select form-select-sm" id="admin-filter-product-company" aria-label="Filter products by company">
                 <option value="">All Companies</option>
                 ${companies
@@ -1301,7 +1345,9 @@ function renderProductFilters() {
 
     const handleChange = (event) => {
         const { id, value } = event.target;
-        if (id === 'admin-filter-product-company') {
+        if (id === 'admin-filter-product-line') {
+            state.filters.products.line = value;
+        } else if (id === 'admin-filter-product-company') {
             state.filters.products.company = value;
         } else if (id === 'admin-filter-product-category') {
             state.filters.products.category = value;
@@ -1317,8 +1363,9 @@ function renderProductFilters() {
 }
 
 function getFilteredProducts() {
-    const { company, category, type } = state.filters.products;
+    const { line, company, category, type } = state.filters.products;
     return state.products.filter((product) => {
+        if (line && product.line_id !== line) return false;
         if (company && (product.company_name || '') !== company) return false;
         if (category && (product.category || '') !== category) return false;
         if (type) {
@@ -1880,19 +1927,44 @@ function renderDoctorsSection(options = {}) {
 function renderDoctorFilters() {
     const container = document.getElementById('doctor-filters');
     if (!container) return;
-    const { specialist } = state.filters.doctors;
+
+    // Get lines that have employees assigned (filter out lines with no employees)
+    const linesWithEmployees = state.lines.filter(line =>
+        state.employees.some(emp => emp.line_id === line.id)
+    );
+
+    // Initialize line filter to oldest line if not set
+    if (!state.filters.doctors.line) {
+        const sorted = [...linesWithEmployees].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        state.filters.doctors.line = sorted[0]?.id || '';
+    }
+
+    const { line, specialist } = state.filters.doctors;
+    const lines = linesWithEmployees.map((l) => ({ id: l.id, name: l.name })).sort((a, b) => a.name.localeCompare(b.name));
     const specialists = state.employees
         .filter((emp) => emp.role === ROLES.EMPLOYEE && emp.full_name)
         .map((emp) => ({ value: String(emp.id), label: emp.full_name }))
         .sort((a, b) => a.label.localeCompare(b.label));
 
+    if (line && !lines.find((l) => l.id === line)) {
+        state.filters.doctors.line = getOldestLine();
+    }
     if (specialist && !specialists.some((option) => option.value === specialist)) {
         state.filters.doctors.specialist = '';
     }
+    const selectedLine = state.filters.doctors.line;
     const selectedSpecialist = state.filters.doctors.specialist;
 
     container.innerHTML = `
         <div class="filters-row">
+            <select class="form-select form-select-sm" id="admin-filter-doctor-line" aria-label="Filter doctors by line">
+                ${lines
+                    .map(
+                        (item) =>
+                            `<option value="${item.id}"${item.id === selectedLine ? ' selected' : ''}>${item.name}</option>`
+                    )
+                    .join('')}
+            </select>
             <select class="form-select form-select-sm" id="admin-filter-doctor-specialist" aria-label="Filter doctors by product specialist">
                 <option value="">All Product Specialists</option>
                 ${specialists
@@ -1907,33 +1979,62 @@ function renderDoctorFilters() {
         </div>
     `;
 
-    const select = container.querySelector('#admin-filter-doctor-specialist');
-    select?.addEventListener('change', (event) => {
-        state.filters.doctors.specialist = event.target.value;
+    const handleChange = (event) => {
+        const { id, value } = event.target;
+        if (id === 'admin-filter-doctor-line') {
+            state.filters.doctors.line = value;
+        } else if (id === 'admin-filter-doctor-specialist') {
+            state.filters.doctors.specialist = value;
+        }
         renderDoctorsSection();
+    };
+
+    container.querySelectorAll('select').forEach((select) => {
+        select.addEventListener('change', handleChange);
     });
 }
 
 function getFilteredDoctors() {
-    const { specialist } = state.filters.doctors;
-    if (!specialist) return state.doctors.slice();
-    const specialistEmployee = state.employeeById?.get(String(specialist));
-    const normalizedName = specialistEmployee?.full_name?.toLowerCase();
+    const { line, specialist } = state.filters.doctors;
 
-    return state.doctors.filter((doctor) => {
-        const assignedIds = [
-            doctor.owner_employee_id,
-            doctor.secondary_employee_id,
-            doctor.tertiary_employee_id,
-            doctor.quaternary_employee_id,
-            doctor.quinary_employee_id
-        ].filter(Boolean);
-        if (assignedIds.some((id) => String(id) === String(specialist))) return true;
-        if (!normalizedName) return false;
-        return [doctor.owner_name, doctor.secondary_owner_name, doctor.tertiary_owner_name, doctor.quaternary_owner_name, doctor.quinary_owner_name]
-            .filter(Boolean)
-            .some((name) => name.toLowerCase() === normalizedName);
-    });
+    let filtered = state.doctors.slice();
+
+    // Filter by line
+    if (line) {
+        filtered = filtered.filter((doctor) => {
+            const lineIds = [
+                doctor.line_id,
+                doctor.secondary_line_id,
+                doctor.tertiary_line_id,
+                doctor.quaternary_line_id,
+                doctor.quinary_line_id
+            ].filter(Boolean);
+            return lineIds.includes(line);
+        });
+    }
+
+    // Filter by specialist
+    if (specialist) {
+        const specialistEmployee = state.employeeById?.get(String(specialist));
+        const normalizedName = specialistEmployee?.full_name?.toLowerCase();
+
+        filtered = filtered.filter((doctor) => {
+            const assignedIds = [
+                doctor.owner_employee_id,
+                doctor.secondary_employee_id,
+                doctor.tertiary_employee_id,
+                doctor.quaternary_employee_id,
+                doctor.quinary_employee_id
+            ].filter(Boolean);
+            if (assignedIds.some((id) => String(id) === String(specialist))) return true;
+            if (!normalizedName) return false;
+            return [doctor.owner_name, doctor.secondary_owner_name, doctor.tertiary_owner_name, doctor.quaternary_owner_name, doctor.quinary_owner_name]
+                .filter(Boolean)
+                .some((name) => name.toLowerCase() === normalizedName);
+        });
+    }
+
+    return filtered;
 }
 
 function renderDoctorTable(doctors = state.doctors) {
@@ -2480,23 +2581,48 @@ function renderAccountsSection(options = {}) {
 function renderAccountFilters() {
     const container = document.getElementById('account-filters');
     if (!container) return;
-    const { specialist, accountType } = state.filters.accounts;
+
+    // Get lines that have employees assigned (filter out lines with no employees)
+    const linesWithEmployees = state.lines.filter(line =>
+        state.employees.some(emp => emp.line_id === line.id)
+    );
+
+    // Initialize line filter to oldest line if not set
+    if (!state.filters.accounts.line) {
+        const sorted = [...linesWithEmployees].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        state.filters.accounts.line = sorted[0]?.id || '';
+    }
+
+    const { line, specialist, accountType } = state.filters.accounts;
+    const lines = linesWithEmployees.map((l) => ({ id: l.id, name: l.name })).sort((a, b) => a.name.localeCompare(b.name));
     const specialists = state.employees
         .filter((emp) => emp.role === ROLES.EMPLOYEE && emp.full_name)
         .map((emp) => ({ value: String(emp.id), label: emp.full_name }))
         .sort((a, b) => a.label.localeCompare(b.label));
 
+    if (line && !lines.find((l) => l.id === line)) {
+        state.filters.accounts.line = getOldestLine();
+    }
     if (specialist && !specialists.some((option) => option.value === specialist)) {
         state.filters.accounts.specialist = '';
     }
     if (accountType && !ACCOUNT_TYPES.includes(accountType)) {
         state.filters.accounts.accountType = '';
     }
+    const selectedLine = state.filters.accounts.line;
     const selectedSpecialist = state.filters.accounts.specialist;
     const selectedAccountType = state.filters.accounts.accountType;
 
     container.innerHTML = `
         <div class="filters-row">
+            <select class="form-select form-select-sm" id="admin-filter-account-line" aria-label="Filter accounts by line">
+                ${lines
+                    .map(
+                        (item) =>
+                            `<option value="${item.id}"${item.id === selectedLine ? ' selected' : ''}>${item.name}</option>`
+                    )
+                    .join('')}
+            </select>
             <select class="form-select form-select-sm" id="admin-filter-account-specialist" aria-label="Filter accounts by product specialist">
                 <option value="">All Product Specialists</option>
                 ${specialists
@@ -2520,23 +2646,37 @@ function renderAccountFilters() {
         </div>
     `;
 
-    container.querySelector('#admin-filter-account-specialist')?.addEventListener('change', (event) => {
-        state.filters.accounts.specialist = event.target.value;
+    const handleChange = (event) => {
+        const { id, value } = event.target;
+        if (id === 'admin-filter-account-line') {
+            state.filters.accounts.line = value;
+        } else if (id === 'admin-filter-account-specialist') {
+            state.filters.accounts.specialist = value;
+        } else if (id === 'admin-filter-account-type') {
+            state.filters.accounts.accountType = value;
+        }
         renderAccountsSection();
-    });
+    };
 
-    container.querySelector('#admin-filter-account-type')?.addEventListener('change', (event) => {
-        state.filters.accounts.accountType = event.target.value;
-        renderAccountsSection();
+    container.querySelectorAll('select').forEach((select) => {
+        select.addEventListener('change', handleChange);
     });
 }
 
 function getFilteredAccounts() {
-    const { specialist, accountType } = state.filters.accounts;
+    const { line, specialist, accountType } = state.filters.accounts;
     const specialistEmployee = specialist ? state.employeeById?.get(String(specialist)) : null;
     const normalizedName = specialistEmployee?.full_name?.toLowerCase();
 
     return state.accounts.filter((account) => {
+        if (line) {
+            const lineIds = [
+                account.line_id,
+                account.secondary_line_id,
+                account.tertiary_line_id
+            ].filter(Boolean);
+            if (!lineIds.includes(line)) return false;
+        }
         if (specialist) {
             const assignedIds = [
                 account.owner_employee_id,
@@ -2763,6 +2903,43 @@ async function deleteAccount(id) {
         alert(handleError(error));
     }
 }
+function renderCasesLineSwitcher() {
+    const container = document.getElementById('cases-line-switcher');
+    if (!container) return;
+
+    // Get lines that have employees assigned (filter out lines with no employees)
+    const linesWithEmployees = state.lines.filter(line =>
+        state.employees.some(emp => emp.line_id === line.id)
+    );
+
+    // Initialize line filter to oldest line if not set
+    if (!state.filters.cases.line) {
+        const sorted = [...linesWithEmployees].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        state.filters.cases.line = sorted[0]?.id || '';
+    }
+
+    const lines = linesWithEmployees.map((l) => ({ id: l.id, name: l.name })).sort((a, b) => a.name.localeCompare(b.name));
+    const selectedLine = state.filters.cases.line;
+
+    container.innerHTML = `
+        <span class="line-switcher-label">Line:</span>
+        <select class="line-switcher-select" id="cases-line-select">
+            ${lines
+                .map(
+                    (item) =>
+                        `<option value="${item.id}"${item.id === selectedLine ? ' selected' : ''}>${item.name}</option>`
+                )
+                .join('')}
+        </select>
+    `;
+
+    const select = container.querySelector('#cases-line-select');
+    select?.addEventListener('change', (event) => {
+        state.filters.cases.line = event.target.value;
+        renderCasesSection();
+    });
+}
+
 function setupCaseFilters() {
     const container = document.getElementById('cases-filters');
     if (!container) return;
@@ -3148,6 +3325,7 @@ function setupCaseFilters() {
 }
 
 function getFilteredCases() {
+    const line = state.filters.cases.line;
     const specialist = document.getElementById('filter-case-specialist')?.value;
     const accountType = document.getElementById('filter-case-account-type')?.value;
     const companyType = document.getElementById('filter-case-company-type')?.value;
@@ -3172,6 +3350,9 @@ function getFilteredCases() {
     const toDate = periodTo ? new Date(periodTo) : null;
 
     return state.cases.filter((caseItem) => {
+        // Filter by line (employee's line) - skip cases without line
+        if (!caseItem.employee_line_id) return false;
+        if (line && caseItem.employee_line_id !== line) return false;
         if (specialist && caseItem.submitted_by_id !== specialist) return false;
         if (accountType && caseItem.account_type !== accountType) return false;
         if (managerValue) {
@@ -3254,6 +3435,7 @@ function getFilteredCases() {
 }
 
 function renderCasesSection() {
+    renderCasesLineSwitcher();
     const filtered = getFilteredCases();
     renderCaseStats(filtered);
     renderCasesTable(filtered);
@@ -3490,6 +3672,7 @@ function renderApprovalsTable() {
         { title: 'Type', field: 'type', width: 110, headerFilter: 'input' },
         { title: 'Name / Code', field: 'name', minWidth: 200, headerFilter: 'input' },
         { title: 'Product Specialist', field: 'ownerName', minWidth: 200, headerFilter: 'input' },
+        { title: 'Line', field: 'lineName', width: 150, headerFilter: 'input' },
         { title: 'Status', field: 'status', formatter: tableFormatters.status, width: 150 },
         { title: 'Submitted On', field: 'created_at', formatter: tableFormatters.date, width: 150 },
         {
@@ -3663,7 +3846,30 @@ async function processApproval(record, approve = true) {
 function setupApprovalsFilters() {
     const container = document.getElementById('approvals-filters');
     if (!container) return;
+
+    // Initialize line filter to empty (all lines) if not set
+    if (state.filters.approvals.line === undefined) {
+        state.filters.approvals.line = '';
+    }
+
+    // Get lines that have employees assigned (filter out lines with no employees)
+    const linesWithEmployees = state.lines.filter(line =>
+        state.employees.some(emp => emp.line_id === line.id)
+    );
+
+    const lines = linesWithEmployees.map((l) => ({ id: l.id, name: l.name })).sort((a, b) => a.name.localeCompare(b.name));
+    const selectedLine = state.filters.approvals.line || '';
+
     container.innerHTML = `
+        <select class="form-select" id="filter-approval-line">
+            <option value="">All Lines</option>
+            ${lines
+                .map(
+                    (item) =>
+                        `<option value="${item.id}"${item.id === selectedLine ? ' selected' : ''}>${item.name}</option>`
+                )
+                .join('')}
+        </select>
         <select class="form-select" id="filter-approval-type">
             <option value="">All Types</option>
             <option value="doctor">Doctor</option>
@@ -3684,10 +3890,15 @@ function setupApprovalsFilters() {
 }
 
 function filterApprovals() {
+    const line = document.getElementById('filter-approval-line')?.value || '';
     const type = document.getElementById('filter-approval-type').value;
     const status = document.getElementById('filter-approval-status').value;
 
+    // Store line filter in state
+    state.filters.approvals.line = line;
+
     const filtered = state.approvals.filter((item) => {
+        if (line && item.lineId !== line) return false;
         if (type && item.type !== type) return false;
         if (status && item.status !== status) return false;
         return true;
@@ -3701,10 +3912,48 @@ function exportApprovals() {
         type: 'Type',
         name: 'Name',
         ownerName: 'Product Specialist',
+        lineName: 'Line',
         status: 'Status',
         created_at: 'Submitted On'
     });
 }
+function renderDashboardLineSwitcher() {
+    const container = document.getElementById('dashboard-line-switcher');
+    if (!container) return;
+
+    // Get lines that have employees assigned (filter out lines with no employees)
+    const linesWithEmployees = state.lines.filter(line =>
+        state.employees.some(emp => emp.line_id === line.id)
+    );
+
+    // Initialize line filter to oldest line if not set
+    if (!state.filters.dashboard.line) {
+        const sorted = [...linesWithEmployees].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        state.filters.dashboard.line = sorted[0]?.id || '';
+    }
+
+    const lines = linesWithEmployees.map((l) => ({ id: l.id, name: l.name })).sort((a, b) => a.name.localeCompare(b.name));
+    const selectedLine = state.filters.dashboard.line;
+
+    container.innerHTML = `
+        <span class="line-switcher-label">Line:</span>
+        <select class="line-switcher-select" id="dashboard-line-select">
+            ${lines
+                .map(
+                    (item) =>
+                        `<option value="${item.id}"${item.id === selectedLine ? ' selected' : ''}>${item.name}</option>`
+                )
+                .join('')}
+        </select>
+    `;
+
+    const select = container.querySelector('#dashboard-line-select');
+    select?.addEventListener('change', (event) => {
+        state.filters.dashboard.line = event.target.value;
+        renderDashboard();
+    });
+}
+
 function setupDashboardFilters() {
     const container = document.getElementById('dashboard-filters');
     if (!container) return;
@@ -4120,6 +4369,7 @@ function getDashboardFilteredData() {
 }
 
 function getFilteredDashboardCases() {
+    const line = state.filters.dashboard.line;
     const specialist = document.getElementById('dashboard-filter-specialist')?.value;
     const accountType = document.getElementById('dashboard-filter-account-type')?.value;
     const companyType = document.getElementById('dashboard-filter-company-type')?.value;
@@ -4145,6 +4395,9 @@ function getFilteredDashboardCases() {
     const toDate = periodTo ? new Date(periodTo) : null;
 
     return state.cases.filter((caseItem) => {
+        // Filter by line (employee's line) - skip cases without line
+        if (!caseItem.employee_line_id) return false;
+        if (line && caseItem.employee_line_id !== line) return false;
         if (specialist && String(caseItem.submitted_by_id) !== String(specialist)) return false;
         if (accountType && caseItem.account_type !== accountType) return false;
 
@@ -4225,6 +4478,7 @@ function getFilteredDashboardCases() {
 }
 
 function renderDashboard() {
+    renderDashboardLineSwitcher();
     const { cases, caseProducts, caseProductsMap } = getDashboardFilteredData();
     renderDashboardStats(cases, caseProductsMap);
     renderDashboardCharts(cases, caseProductsMap, caseProducts);

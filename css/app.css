@@ -1984,3 +1984,88 @@ body[data-theme='light'] #toggleUnitsSection:active {
         font-size: 13px;
     }
 }
+
+/* Line Switcher */
+.line-switcher-container {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+    width: fit-content;
+}
+
+.line-switcher-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.line-switcher-select {
+    min-width: 200px;
+    max-width: 300px;
+    padding: 8px 12px;
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.line-switcher-select:hover {
+    background: rgba(15, 23, 42, 0.7);
+    border-color: rgba(148, 163, 184, 0.3);
+}
+
+.line-switcher-select:focus {
+    outline: none;
+    border-color: var(--gradient-start);
+    box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.1);
+}
+
+/* Light mode styles for line switcher */
+body.light-mode .line-switcher-container {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: rgba(203, 213, 225, 0.5);
+}
+
+body.light-mode .line-switcher-label {
+    color: #475569;
+}
+
+body.light-mode .line-switcher-select {
+    background: rgba(248, 250, 252, 0.9);
+    border-color: rgba(203, 213, 225, 0.5);
+    color: #1e293b;
+}
+
+body.light-mode .line-switcher-select:hover {
+    background: rgba(241, 245, 249, 1);
+    border-color: rgba(148, 163, 184, 0.6);
+}
+
+body.light-mode .line-switcher-select:focus {
+    border-color: var(--gradient-start);
+    box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.1);
+}
+
+@media (max-width: 768px) {
+    .line-switcher-container {
+        display: flex;
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .line-switcher-select {
+        max-width: 100%;
+    }
+}

@@ -319,11 +319,14 @@ SELECT
     e.id AS submitted_by_id,
     e.first_name || ' ' || e.last_name AS submitted_by_name,
     dm.first_name || ' ' || dm.last_name AS manager_name,
-    adm.first_name || ' ' || adm.last_name AS admin_name
+    adm.first_name || ' ' || adm.last_name AS admin_name,
+    e.line_id AS employee_line_id,
+    l.name AS line_name
 FROM cases c
 LEFT JOIN doctors d ON c.doctor_id = d.id
 LEFT JOIN accounts a ON c.account_id = a.id
 LEFT JOIN employees e ON c.submitted_by = e.id
+LEFT JOIN lines l ON e.line_id = l.id
 LEFT JOIN employees dm ON c.manager_id = dm.id
 LEFT JOIN employees adm ON c.admin_id = adm.id;
 
