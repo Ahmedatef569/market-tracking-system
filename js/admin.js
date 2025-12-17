@@ -3056,7 +3056,14 @@ function setupCaseFilters() {
         renderCasesTable(filtered);
     };
 
-
+    // Setup other filter event listeners (non-cascading)
+    container.querySelector('#filter-case-specialist')?.addEventListener('change', handleFiltersChange);
+    container.querySelector('#filter-case-manager')?.addEventListener('change', handleFiltersChange);
+    container.querySelector('#filter-case-account-type')?.addEventListener('change', handleFiltersChange);
+    container.querySelector('#filter-case-company-type')?.addEventListener('change', handleFiltersChange);
+    container.querySelector('#filter-case-month')?.addEventListener('change', handleFiltersChange);
+    container.querySelector('#filter-case-from')?.addEventListener('change', handleFiltersChange);
+    container.querySelector('#filter-case-to')?.addEventListener('change', handleFiltersChange);
 
     // Setup dual-row cascading filters
     const setupDualRowFilters = () => {
@@ -3236,11 +3243,6 @@ function setupCaseFilters() {
         competitorSubCategorySelect?.addEventListener('change', () => { updateCompetitorCascading(); handleFiltersChange(); });
         competitorProductSelect?.addEventListener('change', handleFiltersChange);
     };
-
-    // Setup other filter event listeners
-    container.querySelectorAll('select:not([id*="company-"]):not([id*="competitor-"]), input').forEach((input) => {
-        input.addEventListener('change', handleFiltersChange);
-    });
 
     setupDualRowFilters();
     container.querySelector('#cases-filter-reset').addEventListener('click', () => {
@@ -3699,6 +3701,10 @@ function renderApprovalsTable() {
         approve: (rowData) => processApproval(rowData, true),
         reject: (rowData) => processApproval(rowData, false)
     });
+
+    // Apply saved filters (line, type, status) by calling filterApprovals
+    // This ensures the table shows the filtered state after approval
+    setTimeout(() => filterApprovals(), 0);
 }
 
 function reviewApproval(record) {
@@ -3812,17 +3818,31 @@ async function processApproval(record, approve = true) {
         if (targetEmployeeId) {
             const entityLabel = record.type.charAt(0).toUpperCase() + record.type.slice(1);
             if (approve) {
+                let message;
+                if (record.type === 'case') {
+                    const doctorName = payload.doctor_name || 'Unknown';
+                    message = `Case request approved by operator Dr. "${doctorName}"`;
+                } else {
+                    message = `${entityLabel} request approved: ${record.name}`;
+                }
                 await notifyEmployee(
                     targetEmployeeId,
-                    `${entityLabel} request approved: ${record.name}`,
+                    message,
                     record.type,
                     record.id
                 );
             } else {
                 const reason = comment ? ` Reason: ${comment}` : '';
+                let message;
+                if (record.type === 'case') {
+                    const doctorName = payload.doctor_name || 'Unknown';
+                    message = `Case request rejected by operator Dr. "${doctorName}".${reason}`;
+                } else {
+                    message = `${entityLabel} request rejected: ${record.name}.${reason}`;
+                }
                 await notifyEmployee(
                     targetEmployeeId,
-                    `${entityLabel} request rejected: ${record.name}.${reason}`,
+                    message,
                     record.type,
                     record.id
                 );

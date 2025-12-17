@@ -2505,7 +2505,7 @@ async function handleMarkNotificationsRead() {
     await refreshNotifications();
 }
 
-async function notifyManagerUsers(entityType, entityId, entityName) {
+async function notifyManagerUsers(entityType, entityId, entityName, doctorName = null) {
     try {
         // Get the employee's direct manager and line manager IDs
         const directManagerId = state.session.employee?.directManagerId;
@@ -2533,8 +2533,14 @@ async function notifyManagerUsers(entityType, entityId, entityName) {
             return;
         }
 
-        const entityLabel = entityType.charAt(0).toUpperCase() + entityType.slice(1);
-        const message = `New ${entityLabel} "${entityName}" pending your approval`;
+        let message;
+        if (entityType === 'case' && doctorName) {
+            const psName = state.session.employee?.fullName || state.session.username || 'Product Specialist';
+            message = `New case by "${psName}" with operator Dr. "${doctorName}" pending your approval`;
+        } else {
+            const entityLabel = entityType.charAt(0).toUpperCase() + entityType.slice(1);
+            message = `New ${entityLabel} "${entityName}" pending your approval`;
+        }
 
         for (const manager of managerUsers) {
             await createNotification({
@@ -3652,7 +3658,11 @@ async function handleCaseSubmit(event) {
             'insert case products'
         );
 
-        await notifyManagerUsers('case', caseId, caseRecord.case_code);
+        // Get doctor name for notification
+        const doctor = state.doctors.find(d => d.id === payload.doctor_id);
+        const doctorName = doctor?.name || 'Unknown';
+
+        await notifyManagerUsers('case', caseId, caseRecord.case_code, doctorName);
         await loadCases();
         buildApprovalDataset();
         renderCasesSection();

@@ -851,8 +851,51 @@ function renderAll() {
 }
 
 async function refreshNotifications() {
-    const notifications = await fetchNotifications(state.session.userId, { includeRead: false });
-    updateNotificationsUI(notifications);
+    const allNotifications = await fetchNotifications(state.session.userId, { includeRead: false });
+
+    // Filter out notifications for entities that are no longer pending manager approval
+    const validNotifications = [];
+    for (const notif of allNotifications) {
+        let isValid = true;
+
+        if (notif.entity_type === 'doctor') {
+            const doctor = state.doctors.find(d => d.id === notif.entity_id);
+            if (!doctor || doctor.status !== APPROVAL_STATUS.PENDING_MANAGER) {
+                isValid = false;
+                // Remove invalid notification
+                await handleSupabase(
+                    supabase.from('notifications').delete().eq('id', notif.id),
+                    'remove invalid doctor notification'
+                );
+            }
+        } else if (notif.entity_type === 'account') {
+            const account = state.accounts.find(a => a.id === notif.entity_id);
+            if (!account || account.status !== APPROVAL_STATUS.PENDING_MANAGER) {
+                isValid = false;
+                // Remove invalid notification
+                await handleSupabase(
+                    supabase.from('notifications').delete().eq('id', notif.id),
+                    'remove invalid account notification'
+                );
+            }
+        } else if (notif.entity_type === 'case') {
+            const caseItem = state.teamCases.find(c => c.id === notif.entity_id);
+            if (!caseItem || caseItem.status !== APPROVAL_STATUS.PENDING_MANAGER) {
+                isValid = false;
+                // Remove invalid notification
+                await handleSupabase(
+                    supabase.from('notifications').delete().eq('id', notif.id),
+                    'remove invalid case notification'
+                );
+            }
+        }
+
+        if (isValid) {
+            validNotifications.push(notif);
+        }
+    }
+
+    updateNotificationsUI(validNotifications);
 }
 
 async function handlePasswordUpdate() {
@@ -2754,10 +2797,13 @@ function setupManagerCaseFilters() {
         renderMyCasesTable(filtered);
     };
 
-    // Setup other filter event listeners
-    container.querySelectorAll('select:not([id*="company-"]):not([id*="competitor-"]), input').forEach((input) => {
-        input.addEventListener('change', handleChange);
-    });
+    // Setup other filter event listeners (non-cascading)
+    container.querySelector('#manager-filter-status')?.addEventListener('change', handleChange);
+    container.querySelector('#manager-filter-account-type')?.addEventListener('change', handleChange);
+    container.querySelector('#manager-filter-company-type')?.addEventListener('change', handleChange);
+    container.querySelector('#manager-filter-month')?.addEventListener('change', handleChange);
+    container.querySelector('#manager-filter-from')?.addEventListener('change', handleChange);
+    container.querySelector('#manager-filter-to')?.addEventListener('change', handleChange);
 
     setupDualRowCascadingFilters();
     container.querySelector('#manager-filter-reset').addEventListener('click', () => {
@@ -3107,6 +3153,8 @@ async function handleTeamApproval(record, approve = true) {
                     'manager case approval'
                 );
                 await removeManagerNotification('case', record.id);
+
+                // Admin is NOT notified for cases - only for doctors and accounts
             } else {
                 await handleSupabase(
                     supabase
@@ -3129,10 +3177,24 @@ async function handleTeamApproval(record, approve = true) {
         if (record.owner_id) {
             const entityLabel = record.type.charAt(0).toUpperCase() + record.type.slice(1);
             if (approve) {
-                await notifyEmployee(record.owner_id, `${entityLabel} request approved by manager`, record.type, record.id);
+                let message;
+                if (record.type === 'case') {
+                    const doctorName = record.payload?.doctor_name || 'Unknown';
+                    message = `Case request approved by operator Dr. "${doctorName}"`;
+                } else {
+                    message = `${entityLabel} request approved by manager`;
+                }
+                await notifyEmployee(record.owner_id, message, record.type, record.id);
             } else {
                 const reason = comment ? ` Reason: ${comment}` : '';
-                await notifyEmployee(record.owner_id, `${entityLabel} request rejected by manager.${reason}`, record.type, record.id);
+                let message;
+                if (record.type === 'case') {
+                    const doctorName = record.payload?.doctor_name || 'Unknown';
+                    message = `Case request rejected by operator Dr. "${doctorName}".${reason}`;
+                } else {
+                    message = `${entityLabel} request rejected by manager.${reason}`;
+                }
+                await notifyEmployee(record.owner_id, message, record.type, record.id);
             }
         }
 
@@ -3180,7 +3242,7 @@ async function removeManagerNotification(entityType, entityId) {
     }
 }
 
-async function notifyAdminUsers(entityType, entityId, entityName) {
+async function notifyAdminUsers(entityType, entityId, entityName, doctorName = null, psName = null) {
     try {
         const { data: adminUsers, error } = await supabase
             .from('users')
@@ -3192,8 +3254,13 @@ async function notifyAdminUsers(entityType, entityId, entityName) {
             return;
         }
 
-        const entityLabel = entityType.charAt(0).toUpperCase() + entityType.slice(1);
-        const message = `New ${entityLabel} "${entityName}" pending your approval`;
+        let message;
+        if (entityType === 'case' && doctorName && psName) {
+            message = `New case by "${psName}" with operator Dr. "${doctorName}" pending your approval`;
+        } else {
+            const entityLabel = entityType.charAt(0).toUpperCase() + entityType.slice(1);
+            message = `New ${entityLabel} "${entityName}" pending your approval`;
+        }
 
         for (const admin of adminUsers) {
             await createNotification({
