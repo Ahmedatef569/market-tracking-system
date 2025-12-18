@@ -1920,9 +1920,9 @@ function renderTeamCaseStats(cases = []) {
 
         if (hasCompanyFilters || hasCompetitorFilters) {
             // Filter cases for company stats (Row 2 selections only)
-            let companyCases = state.teamCases;
+            let companyCases = cases;
             if (hasCompanyFilters) {
-                companyCases = state.teamCases.filter(caseItem => {
+                companyCases = cases.filter(caseItem => {
                     const products = state.teamCaseProductsByCase.get(caseItem.id) || [];
                     return products.some(product => {
                         if (!product.is_company_product) return false;
@@ -1936,9 +1936,9 @@ function renderTeamCaseStats(cases = []) {
             }
 
             // Filter cases for competitor stats (Row 3 selections only)
-            let competitorCases = state.teamCases;
+            let competitorCases = cases;
             if (hasCompetitorFilters) {
-                competitorCases = state.teamCases.filter(caseItem => {
+                competitorCases = cases.filter(caseItem => {
                     const products = state.teamCaseProductsByCase.get(caseItem.id) || [];
                     return products.some(product => {
                         if (product.is_company_product) return false;
@@ -1959,7 +1959,7 @@ function renderTeamCaseStats(cases = []) {
             let mixedCaseCount = 0;
             if (hasCompanyFilters && hasCompetitorFilters) {
                 // Mixed cases = cases that match BOTH Row 2 AND Row 3 selections
-                mixedCaseCount = state.teamCases.filter(caseItem => {
+                mixedCaseCount = cases.filter(caseItem => {
                     const products = state.teamCaseProductsByCase.get(caseItem.id) || [];
 
                     // Check if case has products matching Row 2 (company) selection
@@ -2049,6 +2049,10 @@ function getTeamFilteredCases() {
     const accountType = document.getElementById('team-filter-account-type')?.value;
     const companyType = document.getElementById('team-filter-company-type')?.value;
 
+    // Text search filters
+    const doctorNameSearch = document.getElementById('team-filter-doctor-name')?.value.trim().toLowerCase() || '';
+    const accountNameSearch = document.getElementById('team-filter-account-name')?.value.trim().toLowerCase() || '';
+
     // Company row filters (Row 2)
     const companyCompany = document.getElementById('team-filter-company-company')?.value;
     const companyCategory = document.getElementById('team-filter-company-category')?.value;
@@ -2088,6 +2092,14 @@ function getTeamFilteredCases() {
             if (manager !== directManagerId && manager !== lineManagerId) {
                 return false;
             }
+        }
+
+        // Text search filters
+        if (doctorNameSearch && !(caseItem.doctor_name || '').toLowerCase().includes(doctorNameSearch)) {
+            return false;
+        }
+        if (accountNameSearch && !(caseItem.account_name || '').toLowerCase().includes(accountNameSearch)) {
+            return false;
         }
 
         const products = state.teamCaseProductsByCase.get(caseItem.id) || [];
@@ -2240,6 +2252,19 @@ function setupTeamFilters() {
             </select>
             <input type="date" class="form-control" id="team-filter-from">
             <input type="date" class="form-control" id="team-filter-to">
+            <div></div>
+        </div>
+
+        <!-- Doctor and Account Name Filters Row -->
+        <div class="filters-row" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
+            <input type="text" class="form-control" id="team-filter-doctor-name" placeholder="Search Doctor Name...">
+            <input type="text" class="form-control" id="team-filter-account-name" placeholder="Search Account Name...">
+            <div></div>
+            <div></div>
+        </div>
+
+        <!-- Reset and Export Buttons Row -->
+        <div class="filters-row" style="grid-template-columns: 1fr;">
             <div class="filters-actions" style="justify-self: end;">
                 <button class="btn btn-outline-ghost" id="team-filter-reset">Reset</button>
                 <button class="btn btn-outline-ghost" id="team-cases-export"><i class="bi bi-download me-2"></i>Export</button>
@@ -2429,11 +2454,19 @@ function setupTeamFilters() {
     };
 
     const handleChange = () => renderTeamCases();
-    casesFilters.querySelectorAll('select, input').forEach((input) => {
-        if (!input.id.includes('company-') && !input.id.includes('competitor-')) {
-            input.addEventListener('change', handleChange);
-        }
-    });
+
+    // Setup non-cascading filter event listeners (EXACT COPY FROM ADMIN)
+    casesFilters.querySelector('#team-filter-specialist')?.addEventListener('change', handleChange);
+    casesFilters.querySelector('#team-filter-manager')?.addEventListener('change', handleChange);
+    casesFilters.querySelector('#team-filter-account-type')?.addEventListener('change', handleChange);
+    casesFilters.querySelector('#team-filter-company-type')?.addEventListener('change', handleChange);
+    casesFilters.querySelector('#team-filter-month')?.addEventListener('change', handleChange);
+    casesFilters.querySelector('#team-filter-from')?.addEventListener('change', handleChange);
+    casesFilters.querySelector('#team-filter-to')?.addEventListener('change', handleChange);
+
+    // Text search filters with input event for real-time filtering
+    casesFilters.querySelector('#team-filter-doctor-name')?.addEventListener('input', handleChange);
+    casesFilters.querySelector('#team-filter-account-name')?.addEventListener('input', handleChange);
 
     setupDualRowCascadingFilters();
     casesFilters.querySelector('#team-filter-reset').addEventListener('click', () => {
@@ -4702,9 +4735,9 @@ function renderMyCaseStats(cases) {
 
         if (hasCompanyFilters || hasCompetitorFilters) {
             // Filter cases for company stats (Row 1 selections)
-            let companyCases = state.myCases;
+            let companyCases = cases;
             if (hasCompanyFilters) {
-                companyCases = state.myCases.filter(caseItem => {
+                companyCases = cases.filter(caseItem => {
                     const products = state.myCaseProductsByCase.get(caseItem.id) || [];
                     return products.some(product => {
                         if (!product.is_company_product) return false;
@@ -4718,9 +4751,9 @@ function renderMyCaseStats(cases) {
             }
 
             // Filter cases for competitor stats (Row 2 selections)
-            let competitorCases = state.myCases;
+            let competitorCases = cases;
             if (hasCompetitorFilters) {
-                competitorCases = state.myCases.filter(caseItem => {
+                competitorCases = cases.filter(caseItem => {
                     const products = state.myCaseProductsByCase.get(caseItem.id) || [];
                     return products.some(product => {
                         if (product.is_company_product) return false;
@@ -4741,7 +4774,7 @@ function renderMyCaseStats(cases) {
             let mixedCaseCount = 0;
             if (hasCompanyFilters && hasCompetitorFilters) {
                 // Mixed cases = cases that match BOTH Row 1 AND Row 2 selections
-                mixedCaseCount = state.myCases.filter(caseItem => {
+                mixedCaseCount = cases.filter(caseItem => {
                     const products = state.myCaseProductsByCase.get(caseItem.id) || [];
 
                     // Check if case has products matching Row 1 (company) selection

@@ -310,7 +310,11 @@ function setupCaseFilters() {
 
         month: container.querySelector('#ps-filter-month')?.value || '',
         from: container.querySelector('#ps-filter-from')?.value || '',
-        to: container.querySelector('#ps-filter-to')?.value || ''
+        to: container.querySelector('#ps-filter-to')?.value || '',
+
+        // Text search filters
+        doctorName: container.querySelector('#ps-filter-doctor-name')?.value || '',
+        accountName: container.querySelector('#ps-filter-account-name')?.value || ''
     };
 
     const { company, competitor } = collectDualRowFilterOptions(state.caseProducts, state.products);
@@ -385,6 +389,19 @@ function setupCaseFilters() {
             </select>
             <input type="date" class="form-control" id="ps-filter-from" placeholder="From Date">
             <input type="date" class="form-control" id="ps-filter-to" placeholder="To Date">
+            <div></div>
+        </div>
+
+        <!-- Doctor and Account Name Filters Row -->
+        <div class="filters-row" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
+            <input type="text" class="form-control" id="ps-filter-doctor-name" placeholder="Search Doctor Name...">
+            <input type="text" class="form-control" id="ps-filter-account-name" placeholder="Search Account Name...">
+            <div></div>
+            <div></div>
+        </div>
+
+        <!-- Reset and Export Buttons Row -->
+        <div class="filters-row" style="grid-template-columns: 1fr;">
             <div class="filters-actions" style="justify-self: end;">
                 <button class="btn btn-outline-ghost" id="ps-filter-reset">Reset</button>
                 <button class="btn btn-outline-ghost" id="ps-cases-export"><i class="bi bi-download me-2"></i>Export</button>
@@ -431,6 +448,12 @@ function setupCaseFilters() {
     if (fromInput) fromInput.value = previousSelections.from || '';
     const toInput = container.querySelector('#ps-filter-to');
     if (toInput) toInput.value = previousSelections.to || '';
+
+    // Restore text search filters
+    const doctorNameInput = container.querySelector('#ps-filter-doctor-name');
+    if (doctorNameInput) doctorNameInput.value = previousSelections.doctorName || '';
+    const accountNameInput = container.querySelector('#ps-filter-account-name');
+    if (accountNameInput) accountNameInput.value = previousSelections.accountName || '';
 
     // Setup dual-row cascading filters (EXACT COPY FROM ADMIN)
     const setupDualRowFilters = () => {
@@ -621,6 +644,10 @@ function setupCaseFilters() {
     container.querySelector('#ps-filter-from')?.addEventListener('change', handleFiltersChange);
     container.querySelector('#ps-filter-to')?.addEventListener('change', handleFiltersChange);
 
+    // Text search filters with input event for real-time filtering
+    container.querySelector('#ps-filter-doctor-name')?.addEventListener('input', handleFiltersChange);
+    container.querySelector('#ps-filter-account-name')?.addEventListener('input', handleFiltersChange);
+
     setupDualRowFilters();
     // Reset button
     container.querySelector('#ps-filter-reset').addEventListener('click', () => {
@@ -744,6 +771,10 @@ function getFilteredCases() {
     const accountType = document.getElementById('ps-filter-account-type')?.value;
     const companyType = document.getElementById('ps-filter-company-type')?.value;
 
+    // Text search filters
+    const doctorNameSearch = document.getElementById('ps-filter-doctor-name')?.value.trim().toLowerCase() || '';
+    const accountNameSearch = document.getElementById('ps-filter-account-name')?.value.trim().toLowerCase() || '';
+
     // Dual-row filter values
     const companyCompany = document.getElementById('ps-filter-company-company')?.value;
     const companyCategory = document.getElementById('ps-filter-company-category')?.value;
@@ -766,6 +797,14 @@ function getFilteredCases() {
     return state.cases.filter((caseItem) => {
         if (status && caseItem.status !== status) return false;
         if (accountType && caseItem.account_type !== accountType) return false;
+
+        // Text search filters
+        if (doctorNameSearch && !(caseItem.doctor_name || '').toLowerCase().includes(doctorNameSearch)) {
+            return false;
+        }
+        if (accountNameSearch && !(caseItem.account_name || '').toLowerCase().includes(accountNameSearch)) {
+            return false;
+        }
 
         const products = state.caseProductsByCase.get(caseItem.id) || [];
 

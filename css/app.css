@@ -743,6 +743,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     padding-inline: 16px;
 }
 
+.filters-bar .form-control::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+}
+
 .filters-bar .form-control[type='date'],
 .filters-bar .form-control[type='month'] {
     min-width: 150px;
@@ -1240,6 +1244,10 @@ body[data-theme='light'] .filters-bar .form-control {
     background: #ffffff;
     color: #0f172a;
     border: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+body[data-theme='light'] .filters-bar .form-control::placeholder {
+    color: rgba(15, 23, 42, 0.5);
 }
 
 body[data-theme='light'] .filters-bar .form-select:focus,

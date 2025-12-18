@@ -2962,7 +2962,11 @@ function setupCaseFilters() {
 
         month: container.querySelector('#filter-case-month')?.value || '',
         from: container.querySelector('#filter-case-from')?.value || '',
-        to: container.querySelector('#filter-case-to')?.value || ''
+        to: container.querySelector('#filter-case-to')?.value || '',
+
+        // Text search filters
+        doctorName: container.querySelector('#filter-case-doctor-name')?.value || '',
+        accountName: container.querySelector('#filter-case-account-name')?.value || ''
     };
     const specialists = state.employees
         .filter((emp) => emp.role === ROLES.EMPLOYEE)
@@ -3043,6 +3047,19 @@ function setupCaseFilters() {
             </select>
             <input type="date" class="form-control" id="filter-case-from">
             <input type="date" class="form-control" id="filter-case-to">
+            <div></div>
+        </div>
+
+        <!-- Doctor and Account Name Filters Row -->
+        <div class="filters-row" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
+            <input type="text" class="form-control" id="filter-case-doctor-name" placeholder="Search Doctor Name...">
+            <input type="text" class="form-control" id="filter-case-account-name" placeholder="Search Account Name...">
+            <div></div>
+            <div></div>
+        </div>
+
+        <!-- Reset and Export Buttons Row -->
+        <div class="filters-row" style="grid-template-columns: 1fr;">
             <div class="filters-actions" style="justify-self: end;">
                 <button class="btn btn-outline-ghost" id="cases-filter-reset">Reset</button>
                 <button class="btn btn-outline-ghost" id="cases-export"><i class="bi bi-download me-2"></i>Export</button>
@@ -3064,6 +3081,10 @@ function setupCaseFilters() {
     container.querySelector('#filter-case-month')?.addEventListener('change', handleFiltersChange);
     container.querySelector('#filter-case-from')?.addEventListener('change', handleFiltersChange);
     container.querySelector('#filter-case-to')?.addEventListener('change', handleFiltersChange);
+
+    // Text search filters with input event for real-time filtering
+    container.querySelector('#filter-case-doctor-name')?.addEventListener('input', handleFiltersChange);
+    container.querySelector('#filter-case-account-name')?.addEventListener('input', handleFiltersChange);
 
     // Setup dual-row cascading filters
     const setupDualRowFilters = () => {
@@ -3323,6 +3344,12 @@ function setupCaseFilters() {
     const toInput = container.querySelector('#filter-case-to');
     if (toInput) toInput.value = previousSelections.to || '';
 
+    // Restore text search filters
+    const doctorNameInput = container.querySelector('#filter-case-doctor-name');
+    if (doctorNameInput) doctorNameInput.value = previousSelections.doctorName || '';
+    const accountNameInput = container.querySelector('#filter-case-account-name');
+    if (accountNameInput) accountNameInput.value = previousSelections.accountName || '';
+
     handleFiltersChange();
 }
 
@@ -3335,6 +3362,10 @@ function getFilteredCases() {
     const monthValue = document.getElementById('filter-case-month')?.value;
     const periodFrom = document.getElementById('filter-case-from')?.value;
     const periodTo = document.getElementById('filter-case-to')?.value;
+
+    // Text search filters
+    const doctorNameSearch = document.getElementById('filter-case-doctor-name')?.value.trim().toLowerCase() || '';
+    const accountNameSearch = document.getElementById('filter-case-account-name')?.value.trim().toLowerCase() || '';
 
     // Dual-row filter values
     const companyCompany = document.getElementById('filter-case-company-company')?.value;
@@ -3366,6 +3397,14 @@ function getFilteredCases() {
             if (managerValue !== directManagerId && managerValue !== lineManagerId) {
                 return false;
             }
+        }
+
+        // Text search filters
+        if (doctorNameSearch && !(caseItem.doctor_name || '').toLowerCase().includes(doctorNameSearch)) {
+            return false;
+        }
+        if (accountNameSearch && !(caseItem.account_name || '').toLowerCase().includes(accountNameSearch)) {
+            return false;
         }
 
         const products = state.caseProductsByCase.get(caseItem.id) || [];
@@ -3902,11 +3941,9 @@ function setupApprovalsFilters() {
                 .map((status) => `<option value="${status}">${status.replace('_', ' ')}</option>`)
                 .join('')}
         </select>
-        <button class="btn btn-outline-ghost" id="approvals-export"><i class="bi bi-download me-2"></i>Export</button>
     `;
 
     container.querySelectorAll('select').forEach((input) => input.addEventListener('change', filterApprovals));
-    container.querySelector('#approvals-export').addEventListener('click', exportApprovals);
 }
 
 function filterApprovals() {
