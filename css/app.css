@@ -1131,36 +1131,37 @@ body[data-theme='light']::before {
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(249, 115, 22, 0.1));
 }
 
+/* Sidebar remains dark in both light and dark modes */
 body[data-theme='light'] .sidebar {
-    background: linear-gradient(180deg, #eff6ff, #dbeafe);
-    color: #0f172a;
-    box-shadow: 8px 0 32px rgba(15, 23, 42, 0.12);
+    background: linear-gradient(180deg, #1565c0, #b92b27);
+    color: white;
+    box-shadow: 8px 0 32px rgba(15, 23, 42, 0.35);
 }
 
 body[data-theme='light'] .sidebar nav::-webkit-scrollbar-thumb {
-    background: rgba(59, 130, 246, 0.25);
+    background: rgba(255, 255, 255, 0.35);
 }
 
 body[data-theme='light'] .sidebar-header h1 {
-    color: #1d4ed8;
+    color: white;
 }
 
 body[data-theme='light'] .nav-link {
-    color: #1f2937;
+    color: rgba(255, 255, 255, 0.85);
 }
 
 body[data-theme='light'] .nav-link .icon {
-    color: #1d4ed8;
+    color: rgba(255, 255, 255, 0.75);
 }
 
 body[data-theme='light'] .nav-link:hover,
 body[data-theme='light'] .nav-link.active {
-    background: rgba(59, 130, 246, 0.18);
-    color: #1d4ed8;
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
 }
 
 body[data-theme='light'] .nav-link.active .icon {
-    color: #1d4ed8;
+    color: white;
 }
 
 body[data-theme='light'] .theme-toggle {
@@ -1629,9 +1630,10 @@ body[data-theme='light'] .case-review table.table tbody tr:nth-child(odd) {
         padding: 12px 16px;
     }
 
-    /* Ensure light mode sidebar has consistent background in mobile view */
+    /* Ensure sidebar remains dark in both modes in mobile view */
     body[data-theme='light'] .sidebar {
-        background: linear-gradient(180deg, #eff6ff, #dbeafe);
+        background: linear-gradient(180deg, #1565c0, #b92b27);
+        color: white;
     }
 }
 

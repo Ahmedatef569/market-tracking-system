@@ -6207,11 +6207,11 @@ function renderAccountStats(accounts = state.accounts) {
 }
 async function removeAdminNotification(entityType, entityId) {
     try {
+        // Remove notifications for ALL admin users, not just the current admin
         await handleSupabase(
             supabase
                 .from('notifications')
                 .delete()
-                .eq('user_id', state.session.userId)
                 .eq('entity_type', entityType)
                 .eq('entity_id', entityId),
             'remove admin notification'
