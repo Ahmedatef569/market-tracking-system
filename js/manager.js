@@ -25,6 +25,7 @@ import {
 import { createTable, tableFormatters, bindTableActions, ensureTabulator } from './tables.js';
 import { applyChartDefaults, resetChartDefaults, buildBarChart, buildLineChart, buildDoughnutChart, buildPieChart, destroyChart } from './charts.js';
 import { fetchNotifications, markNotificationsRead, createNotification } from './notifications.js';
+import { fetchReceivedMessages, getUnreadMessageCount, markMessageAsRead } from './messages.js';
 import { initFormModal, refreshFormHosts, openFormModal, closeFormModal } from './formModal.js';
 import {
     groupCaseProducts,
@@ -101,11 +102,15 @@ const elements = {
     btnToggleSidebarDesktop: document.getElementById('btnToggleSidebarDesktop'),
     btnLogout: document.getElementById('actionLogout'),
     btnNotifications: document.getElementById('btnNotifications'),
+    btnMessages: document.getElementById('btnMessages'),
+    messagesCounter: document.getElementById('messages-counter'),
+    messagesContainer: document.getElementById('messages-container'),
     markNotificationsBtn: document.getElementById('mark-notifications-read'),
     notificationsIndicator: document.getElementById('notifications-indicator'),
     notificationsContainer: document.getElementById('notifications-container'),
     btnChangePassword: document.getElementById('actionChangePassword'),
     passwordModal: document.getElementById('modalPassword'),
+    messageViewModal: document.getElementById('modalMessageView'),
     passwordSaveBtn: document.getElementById('save-password-btn'),
     themeToggle: document.getElementById('themeToggle'),
     themeToggleIcon: document.getElementById('themeToggleIcon')
@@ -113,7 +118,9 @@ const elements = {
 
 const bootstrapComponents = {
     notificationsOffcanvas: null,
-    passwordModal: null
+    messagesOffcanvas: null,
+    passwordModal: null,
+    messageViewModal: null
 };
 
 applyChartDefaults();
@@ -226,8 +233,18 @@ function setupModals() {
         bootstrapComponents.notificationsOffcanvas = offcanvasEl
             ? new window.bootstrap.Offcanvas(offcanvasEl)
             : null;
+
+        const messagesOffcanvasEl = document.getElementById('offcanvasMessages');
+        bootstrapComponents.messagesOffcanvas = messagesOffcanvasEl
+            ? new window.bootstrap.Offcanvas(messagesOffcanvasEl)
+            : null;
+
         bootstrapComponents.passwordModal = elements.passwordModal
             ? new window.bootstrap.Modal(elements.passwordModal)
+            : null;
+
+        bootstrapComponents.messageViewModal = elements.messageViewModal
+            ? new window.bootstrap.Modal(elements.messageViewModal)
             : null;
     }
 
@@ -248,6 +265,13 @@ function setupModals() {
 
     elements.passwordSaveBtn?.addEventListener('click', handlePasswordUpdate);
     elements.markNotificationsBtn?.addEventListener('click', handleMarkNotificationsRead);
+
+    // Message-related event listeners
+    elements.btnMessages?.addEventListener('click', handleMessagesClick);
+
+    // Start periodic refresh for unread message count
+    refreshUnreadMessageCount();
+    setInterval(refreshUnreadMessageCount, 30000); // Refresh every 30 seconds
 }
 
 function setupSectionNavigation() {
@@ -5771,8 +5795,108 @@ function refreshManagerCaseFormOptions() {
     }
 }
 
+// ============================================================================
+// MESSAGE SYSTEM
+// ============================================================================
 
+async function handleMessagesClick() {
+    bootstrapComponents.messagesOffcanvas?.show();
+    await loadReceivedMessages();
+}
 
+async function loadReceivedMessages() {
+    try {
+        const messages = await fetchReceivedMessages(state.session.userId);
+        renderManagerMessages(messages);
+    } catch (error) {
+        console.error('Error loading received messages:', error);
+        if (elements.messagesContainer) {
+            elements.messagesContainer.innerHTML = '<div class="text-center text-secondary p-4">Failed to load messages</div>';
+        }
+    }
+}
 
+function renderManagerMessages(messages) {
+    if (!elements.messagesContainer) return;
+
+    if (!messages || messages.length === 0) {
+        elements.messagesContainer.innerHTML = '<div class="text-center text-secondary p-4">No messages yet</div>';
+        return;
+    }
+
+    elements.messagesContainer.innerHTML = messages.map(msg => {
+        return `
+            <div class="message-item ${!msg.is_read ? 'unread' : ''}" data-message-id="${msg.id}">
+                <div class="message-header">
+                    <span class="message-sender">${msg.sender_full_name || msg.sender_username}</span>
+                    <span class="message-date">${formatDate(msg.created_at)}</span>
+                </div>
+                ${msg.subject ? `<div class="message-subject">${msg.subject}</div>` : ''}
+                <div class="message-preview">${msg.message_text.substring(0, 100)}${msg.message_text.length > 100 ? '...' : ''}</div>
+            </div>
+        `;
+    }).join('');
+
+    // Add click handlers to open full message
+    elements.messagesContainer.querySelectorAll('.message-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const messageId = item.dataset.messageId;
+            const message = messages.find(m => m.id === messageId);
+            if (message) {
+                showMessageView(message);
+            }
+        });
+    });
+}
+
+async function showMessageView(message) {
+    const modalBody = document.getElementById('message-view-body');
+    if (!modalBody) return;
+
+    modalBody.innerHTML = `
+        <div class="mb-3">
+            <strong>From:</strong> ${message.sender_full_name || message.sender_username}
+        </div>
+        ${message.subject ? `
+        <div class="mb-3">
+            <strong>Subject:</strong> ${message.subject}
+        </div>
+        ` : ''}
+        <div class="mb-3">
+            <strong>Date:</strong> ${formatDate(message.created_at)}
+        </div>
+        <hr>
+        <div style="white-space: pre-wrap;">${message.message_text}</div>
+    `;
+
+    bootstrapComponents.messageViewModal?.show();
+
+    // Mark as read if unread
+    if (!message.is_read) {
+        try {
+            await markMessageAsRead(message.id, state.session.userId);
+            await loadReceivedMessages();
+            await refreshUnreadMessageCount();
+        } catch (error) {
+            console.error('Error marking message as read:', error);
+        }
+    }
+}
+
+async function refreshUnreadMessageCount() {
+    try {
+        const count = await getUnreadMessageCount(state.session.userId);
+        if (elements.messagesCounter) {
+            if (count > 0) {
+                elements.messagesCounter.textContent = count;
+                elements.messagesCounter.classList.remove('d-none');
+            } else {
+                elements.messagesCounter.classList.add('d-none');
+            }
+        }
+    } catch (error) {
+        console.error('Error refreshing unread message count:', error);
+    }
+}
 
 

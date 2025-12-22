@@ -95,6 +95,10 @@
                             <small class="text-white-50" id="account-role">Peripheral Line</small>
                         </div>
                     </div>
+                    <button class="icon-button" id="btnMessages" aria-label="Messages">
+                        <i class="bi bi-envelope-fill"></i>
+                        <span class="badge-counter d-none" id="messages-counter">0</span>
+                    </button>
                     <button class="icon-button" id="btnNotifications">
                         <i class="bi bi-bell-fill"></i>
                         <span class="pulse d-none" id="notifications-indicator"></span>
@@ -364,6 +368,23 @@
         </div>
     </div>
 
+    <div class="modal fade" id="modalMessageView" tabindex="-1" aria-labelledby="modalMessageViewLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h1 class="modal-title fs-5" id="modalMessageViewLabel">Message</h1>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="message-view-body">
+                    <!-- Message content will be injected here -->
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-ghost" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="modalPassword" tabindex="-1" aria-labelledby="modalPasswordLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content bg-dark text-light">
@@ -392,6 +413,16 @@
                     <button type="button" class="btn btn-gradient" id="save-password-btn">Save</button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="offcanvas offcanvas-end text-bg-dark" tabindex="-1" id="offcanvasMessages" aria-labelledby="offcanvasMessagesLabel">
+        <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="offcanvasMessagesLabel">Messages</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body" id="messages-container">
+            <!-- messages will be injected -->
         </div>
     </div>
 

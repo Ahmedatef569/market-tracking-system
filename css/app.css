@@ -428,6 +428,26 @@ a:hover {
     animation: pulse-ring 2s infinite;
 }
 
+/* Message Counter Badge */
+.icon-button .badge-counter {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #ef4444;
+    color: white;
+    font-size: 0.7rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
 @keyframes pulse-ring {
     0% {
         box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
@@ -438,6 +458,181 @@ a:hover {
     100% {
         box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
     }
+}
+
+/* ========================================
+   MESSAGE SYSTEM STYLES
+   ======================================== */
+
+/* Message List Item */
+.message-item {
+    padding: 16px;
+    margin-bottom: 12px;
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.message-item:hover {
+    background: rgba(15, 23, 42, 0.7);
+    border-color: rgba(148, 163, 184, 0.3);
+    transform: translateX(4px);
+}
+
+.message-item.unread {
+    border-left: 3px solid #0ea5e9;
+    background: rgba(14, 165, 233, 0.08);
+}
+
+.message-item.unread::before {
+    content: '';
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef4444;
+}
+
+.message-item.unread .message-header {
+    padding-left: 16px;
+}
+
+.message-item.selected {
+    background: rgba(14, 165, 233, 0.15);
+    border-color: rgba(14, 165, 233, 0.4);
+}
+
+.message-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.message-sender {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+
+.message-date {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.message-subject {
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    font-size: 0.9rem;
+}
+
+.message-preview {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.message-meta {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.message-meta span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Message Composer Modal */
+.modal-message-composer .modal-content {
+    background: var(--bg-panel-solid);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 16px;
+}
+
+.modal-message-composer .modal-header {
+    border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+    padding: 20px 24px;
+}
+
+.modal-message-composer .modal-body {
+    padding: 24px;
+}
+
+.modal-message-composer .modal-footer {
+    border-top: 1px solid rgba(148, 163, 184, 0.15);
+    padding: 16px 24px;
+}
+
+/* Recipient Selector */
+.recipient-selector {
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 12px;
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: 8px;
+    margin-bottom: 16px;
+}
+
+.recipient-selector::-webkit-scrollbar {
+    width: 6px;
+}
+
+.recipient-selector::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.3);
+    border-radius: 3px;
+}
+
+.recipient-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    margin-bottom: 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.recipient-item:hover {
+    background: rgba(148, 163, 184, 0.1);
+}
+
+.recipient-item input[type="checkbox"] {
+    cursor: pointer;
+}
+
+.recipient-item label {
+    cursor: pointer;
+    margin: 0;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+}
+
+.recipient-role-badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(148, 163, 184, 0.2);
+    color: var(--text-secondary);
 }
 
 .account-chip {
@@ -1461,6 +1656,206 @@ body[data-theme='light'] #notifications-container .notification-item:hover {
 body[data-theme='light'] #notifications-container .notification-item.unread {
     background: rgba(59, 130, 246, 0.05);
     border-color: rgba(59, 130, 246, 0.3);
+}
+
+/* Light Mode - Messages */
+body[data-theme='light'] .message-item {
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+body[data-theme='light'] .message-item:hover {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(148, 163, 184, 0.4);
+}
+
+body[data-theme='light'] .message-item.unread {
+    background: rgba(59, 130, 246, 0.08);
+    border-left-color: #3b82f6;
+}
+
+body[data-theme='light'] .message-item.selected {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.4);
+}
+
+body[data-theme='light'] .message-sender,
+body[data-theme='light'] .message-subject {
+    color: #0f172a;
+}
+
+body[data-theme='light'] .message-preview,
+body[data-theme='light'] .message-date,
+body[data-theme='light'] .message-meta {
+    color: #64748b;
+}
+
+body[data-theme='light'] .recipient-selector {
+    background: rgba(241, 245, 249, 0.6);
+    border-color: rgba(148, 163, 184, 0.3);
+}
+
+body[data-theme='light'] .recipient-item:hover {
+    background: rgba(148, 163, 184, 0.15);
+}
+
+body[data-theme='light'] .recipient-item label {
+    color: #0f172a;
+}
+
+/* Light mode - Message Composer Modal */
+body[data-theme='light'] .modal-message-composer .modal-content.bg-dark {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+body[data-theme='light'] .modal-message-composer .modal-content.bg-dark.text-light {
+    color: #0f172a !important;
+}
+
+body[data-theme='light'] .modal-message-composer .modal-header.border-secondary,
+body[data-theme='light'] .modal-message-composer .modal-footer.border-secondary {
+    border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+body[data-theme='light'] .modal-message-composer .modal-title,
+body[data-theme='light'] .modal-message-composer .form-label {
+    color: #0f172a !important;
+    font-weight: 600;
+}
+
+body[data-theme='light'] .modal-message-composer .form-control,
+body[data-theme='light'] .modal-message-composer textarea.form-control {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+body[data-theme='light'] .modal-message-composer .form-control:focus,
+body[data-theme='light'] .modal-message-composer textarea.form-control:focus {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.15);
+}
+
+body[data-theme='light'] .modal-message-composer .form-control::placeholder,
+body[data-theme='light'] .modal-message-composer textarea.form-control::placeholder {
+    color: #94a3b8 !important;
+}
+
+body[data-theme='light'] .modal-message-composer .btn-outline-secondary {
+    color: #475569 !important;
+    border-color: rgba(148, 163, 184, 0.4);
+}
+
+body[data-theme='light'] .modal-message-composer .btn-outline-secondary:hover {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    border-color: rgba(148, 163, 184, 0.6);
+}
+
+body[data-theme='light'] .modal-message-composer .btn-close-white {
+    filter: invert(1);
+}
+
+body[data-theme='light'] .line-section strong {
+    color: #0f172a !important;
+    font-weight: 600;
+}
+
+body[data-theme='light'] .recipient-role-badge {
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+/* Light mode - Message View Modal */
+body[data-theme='light'] #modalMessageView .modal-content.bg-dark {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+body[data-theme='light'] #modalMessageView .modal-content.bg-dark.text-light {
+    color: #0f172a !important;
+}
+
+body[data-theme='light'] #modalMessageView .modal-header.border-secondary,
+body[data-theme='light'] #modalMessageView .modal-footer.border-secondary {
+    border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+body[data-theme='light'] #modalMessageView .modal-title {
+    color: #0f172a !important;
+    font-weight: 600;
+}
+
+body[data-theme='light'] #modalMessageView .modal-body {
+    color: #0f172a !important;
+}
+
+body[data-theme='light'] #modalMessageView .modal-body strong {
+    color: #0f172a !important;
+    font-weight: 600;
+}
+
+body[data-theme='light'] #modalMessageView .modal-body hr {
+    border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+body[data-theme='light'] #modalMessageView .btn-close-white {
+    filter: invert(1);
+}
+
+/* Message Tabs Styling */
+#offcanvasMessages .nav-tabs {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: transparent;
+}
+
+#offcanvasMessages .nav-tabs .nav-link {
+    color: rgba(255, 255, 255, 0.7);
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    padding: 0.75rem 1.5rem;
+}
+
+#offcanvasMessages .nav-tabs .nav-link:hover {
+    color: rgba(255, 255, 255, 0.9);
+    border-bottom-color: rgba(255, 255, 255, 0.3);
+}
+
+#offcanvasMessages .nav-tabs .nav-link.active {
+    color: #fff;
+    background: transparent;
+    border-bottom-color: var(--bs-primary);
+}
+
+#offcanvasMessages .tab-content {
+    height: calc(100vh - 200px);
+    overflow-y: auto;
+}
+
+/* Light mode tabs */
+body[data-theme='light'] #offcanvasMessages .nav-tabs {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+body[data-theme='light'] #offcanvasMessages .nav-tabs .nav-link {
+    color: rgba(0, 0, 0, 0.6);
+}
+
+body[data-theme='light'] #offcanvasMessages .nav-tabs .nav-link:hover {
+    color: rgba(0, 0, 0, 0.8);
+    border-bottom-color: rgba(0, 0, 0, 0.2);
+}
+
+body[data-theme='light'] #offcanvasMessages .nav-tabs .nav-link.active {
+    color: #000;
+    border-bottom-color: var(--bs-primary);
 }
 
 body[data-theme='light'] .offcanvas.text-bg-dark {

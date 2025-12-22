@@ -25,6 +25,7 @@ import {
 import { createTable, tableFormatters, bindTableActions, exportTableToExcel, ensureTabulator } from './tables.js';
 import { applyChartDefaults, resetChartDefaults, buildLineChart, buildBarChart, buildDoughnutChart, buildPieChart, destroyChart } from './charts.js';
 import { fetchNotifications, markNotificationsRead, createNotification } from './notifications.js';
+import { fetchSentMessages, fetchReceivedMessages, getUnreadMessageCount, sendMessage, deleteMessages, markMessageAsRead } from './messages.js';
 import { initFormModal, openFormModal, refreshFormHosts, closeFormModal } from './formModal.js';
 import {
     groupCaseProducts,
@@ -96,7 +97,7 @@ const state = {
 
 const elements = {
     sidebar: document.getElementById('sidebar'),
-    navLinks: Array.from(document.querySelectorAll('.nav-link')),
+    navLinks: Array.from(document.querySelectorAll('.nav-link[data-section-target]')),
     sections: Array.from(document.querySelectorAll('.page-section')),
     accountName: document.getElementById('account-name'),
     accountRole: document.getElementById('account-role'),
@@ -104,11 +105,21 @@ const elements = {
     notificationsContainer: document.getElementById('notifications-container'),
     markNotificationsBtn: document.getElementById('mark-notifications-read'),
     btnNotifications: document.getElementById('btnNotifications'),
+    btnMessages: document.getElementById('btnMessages'),
+    messagesCounter: document.getElementById('messages-counter'),
+    receivedMessagesContainer: document.getElementById('received-messages-container'),
+    sentMessagesContainer: document.getElementById('sent-messages-container'),
+    btnComposeMessage: document.getElementById('btn-compose-message'),
+    btnDeleteMessages: document.getElementById('btn-delete-messages'),
+    receivedTab: document.getElementById('received-tab'),
+    sentTab: document.getElementById('sent-tab'),
     btnToggleSidebar: document.getElementById('btnToggleSidebar'),
     btnToggleSidebarDesktop: document.getElementById('btnToggleSidebarDesktop'),
     btnLogout: document.getElementById('actionLogout'),
     btnChangePassword: document.getElementById('actionChangePassword'),
     passwordModal: document.getElementById('modalPassword'),
+    messageComposerModal: document.getElementById('modalMessageComposer'),
+    messageViewModal: document.getElementById('modalMessageView'),
     passwordSaveBtn: document.getElementById('save-password-btn'),
     themeToggle: document.getElementById('themeToggle'),
     themeToggleIcon: document.getElementById('themeToggleIcon')
@@ -116,7 +127,10 @@ const elements = {
 
 const bootstrapComponents = {
     notificationsOffcanvas: null,
-    passwordModal: null
+    messagesOffcanvas: null,
+    passwordModal: null,
+    messageComposerModal: null,
+    messageViewModal: null
 };
 
 const approvalsOffcanvasId = 'offcanvasNotifications';
@@ -153,6 +167,7 @@ async function init() {
     refreshFormHosts();
     renderAll();
     await refreshNotifications();
+    await refreshUnreadMessageCount();
 
     // Show welcome popup after everything is loaded
     showWelcomePopup(state.session, 3000);
@@ -248,8 +263,22 @@ function setupModals() {
         bootstrapComponents.notificationsOffcanvas = offcanvasEl
             ? new window.bootstrap.Offcanvas(offcanvasEl)
             : null;
+
+        const messagesOffcanvasEl = document.getElementById('offcanvasMessages');
+        bootstrapComponents.messagesOffcanvas = messagesOffcanvasEl
+            ? new window.bootstrap.Offcanvas(messagesOffcanvasEl)
+            : null;
+
         bootstrapComponents.passwordModal = elements.passwordModal
             ? new window.bootstrap.Modal(elements.passwordModal)
+            : null;
+
+        bootstrapComponents.messageComposerModal = elements.messageComposerModal
+            ? new window.bootstrap.Modal(elements.messageComposerModal)
+            : null;
+
+        bootstrapComponents.messageViewModal = elements.messageViewModal
+            ? new window.bootstrap.Modal(elements.messageViewModal)
             : null;
     }
 
@@ -260,6 +289,15 @@ function setupModals() {
 
     elements.passwordSaveBtn?.addEventListener('click', handlePasswordUpdate);
     elements.markNotificationsBtn?.addEventListener('click', handleMarkNotificationsRead);
+
+    // Message-related event listeners
+    elements.btnMessages?.addEventListener('click', handleMessagesClick);
+    elements.btnComposeMessage?.addEventListener('click', handleComposeMessage);
+    elements.btnDeleteMessages?.addEventListener('click', handleDeleteSelectedMessages);
+
+    // Message tab event listeners
+    // Note: We don't need to reload on tab switch since messages are loaded when offcanvas opens
+    // These listeners are here for future enhancements if needed
 }
 
 function setupSectionNavigation() {
@@ -6234,6 +6272,452 @@ async function notifyEmployee(employeeId, message, entityType, entityId) {
     });
 }
 
+// ============================================================================
+// MESSAGE SYSTEM
+// ============================================================================
 
+let selectedMessageIds = new Set();
 
+async function handleMessagesClick() {
+    bootstrapComponents.messagesOffcanvas?.show();
+    await loadReceivedMessages();
+    await loadSentMessages();
+}
 
+async function loadReceivedMessages() {
+    try {
+        const messages = await fetchReceivedMessages(state.session.userId);
+        renderReceivedMessages(messages);
+    } catch (error) {
+        console.error('Error loading received messages:', error);
+        if (elements.receivedMessagesContainer) {
+            elements.receivedMessagesContainer.innerHTML = '<div class="text-center text-secondary p-4">Failed to load messages</div>';
+        }
+    }
+}
+
+async function loadSentMessages() {
+    try {
+        const messages = await fetchSentMessages(state.session.userId);
+        renderSentMessages(messages);
+    } catch (error) {
+        console.error('Error loading sent messages:', error);
+        if (elements.sentMessagesContainer) {
+            elements.sentMessagesContainer.innerHTML = '<div class="text-center text-secondary p-4">Failed to load messages</div>';
+        }
+    }
+}
+
+function renderReceivedMessages(messages) {
+    if (!elements.receivedMessagesContainer) return;
+
+    if (!messages || messages.length === 0) {
+        elements.receivedMessagesContainer.innerHTML = '<div class="text-center text-secondary p-4">No messages received yet</div>';
+        return;
+    }
+
+    elements.receivedMessagesContainer.innerHTML = messages.map(msg => {
+        return `
+            <div class="message-item ${msg.is_read ? '' : 'unread'}" data-message-id="${msg.id}">
+                <div class="message-header">
+                    <span class="message-subject message-clickable">${msg.subject || '(No Subject)'}</span>
+                    <span class="message-date">${formatDate(msg.created_at)}</span>
+                </div>
+                <div class="message-preview message-clickable">${msg.message_text.substring(0, 100)}${msg.message_text.length > 100 ? '...' : ''}</div>
+                <div class="message-meta">
+                    <i class="bi bi-person me-1"></i>From: ${msg.sender_name || 'Admin'}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // Add event listeners for clicking messages
+    elements.receivedMessagesContainer.querySelectorAll('.message-clickable').forEach(el => {
+        el.addEventListener('click', async (e) => {
+            const messageItem = e.target.closest('.message-item');
+            if (messageItem) {
+                const messageId = messageItem.dataset.messageId;
+                const message = messages.find(m => m.id === messageId);
+                if (message) {
+                    await showReceivedMessageView(message);
+                }
+            }
+        });
+    });
+}
+
+function renderSentMessages(messages) {
+    if (!elements.sentMessagesContainer) return;
+
+    if (!messages || messages.length === 0) {
+        elements.sentMessagesContainer.innerHTML = '<div class="text-center text-secondary p-4">No messages sent yet</div>';
+        return;
+    }
+
+    elements.sentMessagesContainer.innerHTML = messages.map(msg => {
+        const isSelected = selectedMessageIds.has(msg.id);
+        const recipientText = msg.recipient_display || `${msg.recipientCount} recipient${msg.recipientCount !== 1 ? 's' : ''}`;
+        return `
+            <div class="message-item ${isSelected ? 'selected' : ''}" data-message-id="${msg.id}">
+                <div class="message-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <input type="checkbox" class="form-check-input message-checkbox"
+                               data-message-id="${msg.id}" ${isSelected ? 'checked' : ''}>
+                        <span class="message-subject message-clickable">${msg.subject || '(No Subject)'}</span>
+                    </div>
+                    <span class="message-date">${formatDate(msg.created_at)}</span>
+                </div>
+                <div class="message-preview message-clickable">${msg.message_text.substring(0, 100)}${msg.message_text.length > 100 ? '...' : ''}</div>
+                <div class="message-meta">
+                    <i class="bi bi-people me-1"></i>${recipientText}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // Add event listeners for checkboxes
+    elements.sentMessagesContainer.querySelectorAll('.message-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', handleMessageCheckboxChange);
+    });
+
+    // Add click handlers to view full message (click on message content, not checkbox)
+    elements.sentMessagesContainer.querySelectorAll('.message-item').forEach(item => {
+        // Add click handler to clickable areas (subject and preview)
+        const clickableElements = item.querySelectorAll('.message-clickable');
+        clickableElements.forEach(el => {
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent event bubbling
+                const messageId = item.dataset.messageId;
+                const message = messages.find(m => m.id === messageId);
+                if (message) {
+                    showSentMessageView(message);
+                }
+            });
+        });
+    });
+
+    updateDeleteButtonState();
+}
+
+function handleMessageCheckboxChange(event) {
+    const messageId = event.target.dataset.messageId;
+    const messageItem = event.target.closest('.message-item');
+
+    if (event.target.checked) {
+        selectedMessageIds.add(messageId);
+        messageItem?.classList.add('selected');
+    } else {
+        selectedMessageIds.delete(messageId);
+        messageItem?.classList.remove('selected');
+    }
+
+    updateDeleteButtonState();
+}
+
+function updateDeleteButtonState() {
+    if (elements.btnDeleteMessages) {
+        elements.btnDeleteMessages.disabled = selectedMessageIds.size === 0;
+    }
+}
+
+async function showReceivedMessageView(message) {
+    const modalBody = document.getElementById('message-view-body');
+    if (!modalBody) return;
+
+    modalBody.innerHTML = `
+        <div class="mb-3">
+            <strong>Subject:</strong> ${message.subject || '(No Subject)'}
+        </div>
+        <div class="mb-3">
+            <strong>From:</strong> ${message.sender_name || 'Admin'}
+        </div>
+        <div class="mb-3">
+            <strong>Date:</strong> ${formatDate(message.created_at)}
+        </div>
+        <hr>
+        <div style="white-space: pre-wrap;">${message.message_text}</div>
+    `;
+
+    bootstrapComponents.messageViewModal?.show();
+
+    // Mark as read if unread
+    if (!message.is_read) {
+        try {
+            await markMessageAsRead(message.id, state.session.userId);
+            await loadReceivedMessages();
+            await refreshUnreadMessageCount();
+        } catch (error) {
+            console.error('Error marking message as read:', error);
+        }
+    }
+}
+
+function showSentMessageView(message) {
+    const modalBody = document.getElementById('message-view-body');
+    if (!modalBody) return;
+
+    const recipientText = message.recipient_display || `${message.recipientCount} recipient${message.recipientCount !== 1 ? 's' : ''}`;
+
+    modalBody.innerHTML = `
+        <div class="mb-3">
+            <strong>Subject:</strong> ${message.subject || '(No Subject)'}
+        </div>
+        <div class="mb-3">
+            <strong>Date:</strong> ${formatDate(message.created_at)}
+        </div>
+        <div class="mb-3">
+            <strong>Recipients:</strong> ${recipientText}
+        </div>
+        <hr>
+        <div style="white-space: pre-wrap;">${message.message_text}</div>
+    `;
+
+    bootstrapComponents.messageViewModal?.show();
+}
+
+async function handleComposeMessage() {
+    // Load all users (managers, employees, and other admins) for recipient selection
+    const recipients = state.users.filter(user =>
+        user.id !== state.session.userId // Exclude current admin
+    );
+
+    renderRecipientSelector(recipients);
+
+    // Clear form
+    const subjectInput = document.getElementById('message-subject');
+    const textArea = document.getElementById('message-text');
+    if (subjectInput) subjectInput.value = '';
+    if (textArea) textArea.value = '';
+
+    // Setup send button
+    const sendBtn = document.getElementById('btn-send-message');
+    if (sendBtn) {
+        sendBtn.onclick = handleSendMessage;
+    }
+
+    // Remove global select all/deselect all buttons (now handled per section)
+    const selectAllBtn = document.getElementById('btn-select-all-recipients');
+    const deselectAllBtn = document.getElementById('btn-deselect-all-recipients');
+    if (selectAllBtn) selectAllBtn.style.display = 'none';
+    if (deselectAllBtn) deselectAllBtn.style.display = 'none';
+
+    bootstrapComponents.messageComposerModal?.show();
+}
+
+function renderRecipientSelector(recipients) {
+    const container = document.getElementById('recipient-selector');
+    if (!container) return;
+
+    // Separate admins from other users
+    const adminUsers = recipients.filter(r => r.role === ROLES.ADMIN);
+    const nonAdminUsers = recipients.filter(r => r.role !== ROLES.ADMIN);
+
+    // Group non-admin users by line
+    const usersByLine = new Map();
+
+    nonAdminUsers.forEach(user => {
+        const employee = state.employees.find(e => e.id === user.employee_id);
+        if (employee) {
+            const lineName = employee.line_name || 'No Line';
+            if (!usersByLine.has(lineName)) {
+                usersByLine.set(lineName, []);
+            }
+            usersByLine.get(lineName).push({ user, employee });
+        }
+    });
+
+    let html = '';
+
+    // Render each line section with select/deselect all buttons
+    const sortedLines = Array.from(usersByLine.keys()).sort();
+    sortedLines.forEach(lineName => {
+        const lineUsers = usersByLine.get(lineName);
+        const lineId = lineName.replace(/\s+/g, '-').toLowerCase();
+
+        html += `
+            <div class="mb-3 line-section">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <strong>${lineName}</strong>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-sm btn-outline-secondary select-line-btn" data-line="${lineId}">
+                            Select All
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary deselect-line-btn" data-line="${lineId}">
+                            Deselect All
+                        </button>
+                    </div>
+                </div>
+                <div class="line-recipients" data-line="${lineId}">
+        `;
+
+        lineUsers.forEach(({ user, employee }) => {
+            const fullName = `${employee.first_name} ${employee.last_name}`;
+            const roleBadge = user.role === ROLES.MANAGER ? 'Manager' : 'PS';
+            html += `
+                <div class="recipient-item">
+                    <label>
+                        <input type="checkbox" class="form-check-input recipient-checkbox line-${lineId}" value="${user.id}">
+                        <span>${fullName}</span>
+                        <span class="recipient-role-badge">${roleBadge}</span>
+                    </label>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
+    });
+
+    // Render admin users section if any
+    if (adminUsers.length > 0) {
+        html += `
+            <div class="mb-3 line-section">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <strong>Admin Users</strong>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-sm btn-outline-secondary select-line-btn" data-line="admins">
+                            Select All
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary deselect-line-btn" data-line="admins">
+                            Deselect All
+                        </button>
+                    </div>
+                </div>
+                <div class="line-recipients" data-line="admins">
+        `;
+
+        adminUsers.forEach(user => {
+            const employee = state.employees.find(e => e.id === user.employee_id);
+            const fullName = employee ? `${employee.first_name} ${employee.last_name}` : user.username;
+            html += `
+                <div class="recipient-item">
+                    <label>
+                        <input type="checkbox" class="form-check-input recipient-checkbox line-admins" value="${user.id}">
+                        <span>${fullName}</span>
+                        <span class="recipient-role-badge">Admin</span>
+                    </label>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+
+    // Add event listeners for select/deselect buttons
+    container.querySelectorAll('.select-line-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const lineId = btn.dataset.line;
+            container.querySelectorAll(`.line-${lineId}`).forEach(cb => cb.checked = true);
+        });
+    });
+
+    container.querySelectorAll('.deselect-line-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const lineId = btn.dataset.line;
+            container.querySelectorAll(`.line-${lineId}`).forEach(cb => cb.checked = false);
+        });
+    });
+}
+
+async function handleSendMessage() {
+    const subjectInput = document.getElementById('message-subject');
+    const textArea = document.getElementById('message-text');
+    const selectedRecipients = Array.from(document.querySelectorAll('.recipient-checkbox:checked'))
+        .map(cb => cb.value);
+
+    if (!textArea || !textArea.value.trim()) {
+        alert('Please enter a message');
+        return;
+    }
+
+    if (selectedRecipients.length === 0) {
+        alert('Please select at least one recipient');
+        return;
+    }
+
+    // Calculate recipient display text
+    let recipientDisplay = '';
+    if (selectedRecipients.length === 1) {
+        // Single recipient - show their name
+        const recipientUser = state.users.find(u => u.id === selectedRecipients[0]);
+        if (recipientUser) {
+            const employee = state.employees.find(e => e.id === recipientUser.employee_id);
+            recipientDisplay = employee ? `${employee.first_name} ${employee.last_name}` : recipientUser.username;
+        }
+    } else {
+        // Multiple recipients - check if they're all from the same line
+        const recipientUsers = state.users.filter(u => selectedRecipients.includes(u.id));
+        const recipientEmployees = recipientUsers
+            .map(u => state.employees.find(e => e.id === u.employee_id))
+            .filter(e => e !== undefined);
+
+        const uniqueLines = new Set(recipientEmployees.map(e => e.line_name).filter(l => l));
+
+        if (uniqueLines.size === 1 && uniqueLines.values().next().value) {
+            // All from same line
+            recipientDisplay = uniqueLines.values().next().value;
+        } else {
+            // Mixed lines or includes admins
+            recipientDisplay = 'Company Users';
+        }
+    }
+
+    try {
+        await sendMessage({
+            senderId: state.session.userId,
+            subject: subjectInput?.value.trim() || null,
+            messageText: textArea.value.trim(),
+            recipientIds: selectedRecipients,
+            recipientDisplay: recipientDisplay
+        });
+
+        bootstrapComponents.messageComposerModal?.hide();
+        await loadSentMessages();
+        alert('Message sent successfully!');
+    } catch (error) {
+        console.error('Error sending message:', error);
+        alert('Failed to send message. Please try again.');
+    }
+}
+
+async function handleDeleteSelectedMessages() {
+    if (selectedMessageIds.size === 0) return;
+
+    const confirmed = confirm(`Are you sure you want to delete ${selectedMessageIds.size} message${selectedMessageIds.size !== 1 ? 's' : ''}? This will remove the message${selectedMessageIds.size !== 1 ? 's' : ''} from all recipients' inboxes.`);
+
+    if (!confirmed) return;
+
+    try {
+        await deleteMessages(Array.from(selectedMessageIds));
+        selectedMessageIds.clear();
+        await loadSentMessages();
+        alert('Messages deleted successfully!');
+    } catch (error) {
+        console.error('Error deleting messages:', error);
+        alert('Failed to delete messages. Please try again.');
+    }
+}
+
+async function refreshUnreadMessageCount() {
+    try {
+        const count = await getUnreadMessageCount(state.session.userId);
+        if (elements.messagesCounter) {
+            if (count > 0) {
+                elements.messagesCounter.textContent = count;
+                elements.messagesCounter.classList.remove('d-none');
+            } else {
+                elements.messagesCounter.classList.add('d-none');
+            }
+        }
+    } catch (error) {
+        console.error('Error refreshing unread message count:', error);
+    }
+}

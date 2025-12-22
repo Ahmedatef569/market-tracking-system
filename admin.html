@@ -106,6 +106,10 @@
                             <small class="text-white-50" id="account-role">Marketing Manager</small>
                         </div>
                     </div>
+                    <button class="icon-button" id="btnMessages" aria-label="Messages">
+                        <i class="bi bi-envelope-fill"></i>
+                        <span class="badge-counter d-none" id="messages-counter">0</span>
+                    </button>
                     <button class="icon-button" id="btnNotifications" aria-label="Notifications">
                         <i class="bi bi-bell-fill"></i>
                         <span class="pulse d-none" id="notifications-indicator"></span>
@@ -389,6 +393,62 @@
         </main>
     </div>
 
+    <div class="modal fade modal-message-composer" id="modalMessageComposer" tabindex="-1" aria-labelledby="modalMessageComposerLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h1 class="modal-title fs-5" id="modalMessageComposerLabel">Compose New Message</h1>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="message-composer-form">
+                        <div class="mb-3">
+                            <label class="form-label">Recipients</label>
+                            <div class="d-flex gap-2 mb-2">
+                                <button type="button" class="btn btn-sm btn-outline-ghost" id="btn-select-all-recipients">Select All</button>
+                                <button type="button" class="btn btn-sm btn-outline-ghost" id="btn-deselect-all-recipients">Deselect All</button>
+                            </div>
+                            <div class="recipient-selector" id="recipient-selector">
+                                <!-- Recipients will be injected here -->
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="message-subject">Subject (Optional)</label>
+                            <input type="text" class="form-control" id="message-subject" placeholder="Enter message subject">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="message-text">Message</label>
+                            <textarea class="form-control" id="message-text" rows="6" placeholder="Type your message here..." required></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-ghost" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="btn-send-message">
+                        <i class="bi bi-send me-2"></i>Send Message
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalMessageView" tabindex="-1" aria-labelledby="modalMessageViewLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header border-secondary">
+                    <h1 class="modal-title fs-5" id="modalMessageViewLabel">Message</h1>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="message-view-body">
+                    <!-- Message content will be injected here -->
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-ghost" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="modalPassword" tabindex="-1" aria-labelledby="modalPasswordLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content bg-dark text-light">
@@ -416,6 +476,52 @@
                     <button type="button" class="btn btn-outline-ghost" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-gradient" id="save-password-btn">Save</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="offcanvas offcanvas-end text-bg-dark" tabindex="-1" id="offcanvasMessages" aria-labelledby="offcanvasMessagesLabel">
+        <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="offcanvasMessagesLabel">Messages</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body p-0">
+            <!-- Message Tabs -->
+            <ul class="nav nav-tabs px-3 pt-3" id="messageTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="received-tab" data-bs-toggle="tab" data-bs-target="#received-messages" type="button" role="tab">
+                        Received
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="sent-tab" data-bs-toggle="tab" data-bs-target="#sent-messages" type="button" role="tab">
+                        Sent
+                    </button>
+                </li>
+            </ul>
+
+            <!-- Tab Content -->
+            <div class="tab-content" id="messageTabContent">
+                <div class="tab-pane fade show active p-3" id="received-messages" role="tabpanel">
+                    <div id="received-messages-container">
+                        <!-- received messages will be injected -->
+                    </div>
+                </div>
+                <div class="tab-pane fade p-3" id="sent-messages" role="tabpanel">
+                    <div id="sent-messages-container">
+                        <!-- sent messages will be injected -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="offcanvas-footer p-3 border-top border-secondary">
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary flex-fill" id="btn-compose-message">
+                    <i class="bi bi-plus-circle me-2"></i>New Message
+                </button>
+                <button class="btn btn-outline-danger" id="btn-delete-messages" disabled>
+                    <i class="bi bi-trash"></i>
+                </button>
             </div>
         </div>
     </div>
