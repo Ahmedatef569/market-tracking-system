@@ -224,6 +224,32 @@ CREATE TABLE IF NOT EXISTS notifications (
     read_at timestamptz
 );
 
+CREATE TABLE IF NOT EXISTS messages (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    sender_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject text,
+    message_text text NOT NULL,
+    recipient_display text,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON COLUMN messages.recipient_display IS 'User-friendly display of recipients: individual name for single recipient, line name for bulk line selection, or "Company Users" for mixed lines';
+
+CREATE TABLE IF NOT EXISTS message_recipients (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    message_id uuid NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    recipient_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    is_read boolean NOT NULL DEFAULT false,
+    read_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS message_recipients_message_idx
+    ON message_recipients (message_id);
+
+CREATE INDEX IF NOT EXISTS message_recipients_recipient_idx
+    ON message_recipients (recipient_id);
+
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS trigger AS $$
 BEGIN

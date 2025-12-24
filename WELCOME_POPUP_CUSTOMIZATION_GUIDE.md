@@ -24,12 +24,8 @@ Inside the function, you'll find this HTML template:
 function getWelcomeMessage(roleName, fullName) {
     // ⚠️ EDIT THIS TEXT TO CHANGE THE WELCOME MESSAGE ⚠️
     return `
-        <div class="welcome-popup-icon">
-            <i class="bi bi-hand-thumbs-up-fill"></i>
-        </div>
         <div class="welcome-popup-text">
-            <div class="welcome-popup-greeting">Welcome !!</div>
-            <div class="welcome-popup-role">${roleName}</div>
+            <div class="welcome-popup-greeting">👋 Welcome</div>
             <div class="welcome-popup-name">${fullName}</div>
         </div>
     `;
@@ -43,18 +39,18 @@ function getWelcomeMessage(roleName, fullName) {
 
 ### **Example 1: Change the Greeting Text**
 
-**Original:**
+**Current (Default):**
 ```html
-<div class="welcome-popup-greeting">Welcome !!</div>
+<div class="welcome-popup-greeting">Welcome</div>
 ```
 
 **Change to:**
 ```html
-<div class="welcome-popup-greeting">Good Morning !!</div>
+<div class="welcome-popup-greeting">Good Morning</div>
 ```
 or
 ```html
-<div class="welcome-popup-greeting">Hello !!</div>
+<div class="welcome-popup-greeting">Hello</div>
 ```
 
 ---
@@ -62,27 +58,24 @@ or
 ### **Example 2: Add Emoji**
 
 ```html
-<div class="welcome-popup-greeting">Welcome 🎉!!</div>
+<div class="welcome-popup-greeting">Welcome 🎉</div>
 ```
 
 or
 
 ```html
-<div class="welcome-popup-greeting">Hello 👋!!</div>
+<div class="welcome-popup-greeting">Hello 👋</div>
 ```
 
 ---
 
-### **Example 3: Change the Order**
+### **Example 3: Add Role Back**
 
-**Show name first, then role:**
+**Show role with name:**
 ```javascript
 return `
-    <div class="welcome-popup-icon">
-        <i class="bi bi-hand-thumbs-up-fill"></i>
-    </div>
     <div class="welcome-popup-text">
-        <div class="welcome-popup-greeting">Welcome !!</div>
+        <div class="welcome-popup-greeting">👋 Welcome</div>
         <div class="welcome-popup-name">${fullName}</div>
         <div class="welcome-popup-role">${roleName}</div>
     </div>
@@ -91,29 +84,27 @@ return `
 
 ---
 
-### **Example 4: Change the Icon**
+### **Example 4: Change the Emoji**
 
-**Original:**
+**Current (Default):**
 ```html
-<i class="bi bi-hand-thumbs-up-fill"></i>
+<div class="welcome-popup-greeting">👋 Welcome</div>
 ```
 
-**Change to a star:**
+**Change to other emojis:**
 ```html
-<i class="bi bi-star-fill"></i>
+<div class="welcome-popup-greeting">🎉 Welcome</div>
+```
+or
+```html
+<div class="welcome-popup-greeting">🚀 Welcome</div>
+```
+or
+```html
+<div class="welcome-popup-greeting">⭐ Welcome</div>
 ```
 
-**Change to a heart:**
-```html
-<i class="bi bi-heart-fill"></i>
-```
-
-**Change to a trophy:**
-```html
-<i class="bi bi-trophy-fill"></i>
-```
-
-**More icons available at:** https://icons.getbootstrap.com/
+**You can use any emoji directly in the text!**
 
 ---
 
@@ -121,11 +112,8 @@ return `
 
 ```javascript
 return `
-    <div class="welcome-popup-icon">
-        <i class="bi bi-rocket-takeoff-fill"></i>
-    </div>
     <div class="welcome-popup-text">
-        <div class="welcome-popup-greeting">Ready to Track! 🚀</div>
+        <div class="welcome-popup-greeting">🚀 Ready to Track!</div>
         <div class="welcome-popup-name">${fullName}</div>
         <div class="welcome-popup-role">${roleName} Dashboard</div>
     </div>
