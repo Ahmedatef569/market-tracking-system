@@ -27,6 +27,7 @@ import { applyChartDefaults, resetChartDefaults, buildLineChart, buildBarChart, 
 import { fetchNotifications, markNotificationsRead, createNotification } from './notifications.js';
 import { fetchReceivedMessages, getUnreadMessageCount, markMessageAsRead } from './messages.js';
 import { initFormModal, refreshFormHosts, closeFormModal } from './formModal.js';
+import { initBadgeSupport, updateBadge } from './badge.js';
 import {
     groupCaseProducts,
     computeCaseMetrics,
@@ -125,6 +126,9 @@ async function init() {
     state.session = await hydrateSession(state.session, { force: true });
 
     initThemeToggle(elements.themeToggle, { iconElement: elements.themeToggleIcon, onThemeChange: resetChartDefaults });
+
+    // Initialize badge support for app icon notifications
+    await initBadgeSupport();
 
     // Listen for theme changes and re-render dashboard
     window.addEventListener('themeChanged', () => {
@@ -2620,6 +2624,9 @@ async function notifyManagerUsers(entityType, entityId, entityName, doctorName =
 
 function updateNotificationsUI(notifications = []) {
     if (!elements.notificationsIndicator || !elements.notificationsContainer) return;
+
+    // Update app icon badge with notification count
+    updateBadge(notifications.length);
 
     // Trigger bell ringing animation if there are new notifications
     if (notifications.length) {
