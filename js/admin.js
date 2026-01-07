@@ -618,26 +618,103 @@ async function loadAccounts() {
     });
 }
 async function loadCases() {
-    const [cases, products] = await Promise.all([
-        handleSupabase(
+    // Load all cases in batches to avoid 1000-row limit
+    const allCases = [];
+    const BATCH_SIZE = 1000;
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+        const batch = await handleSupabase(
             supabase
                 .from('v_case_details')
                 .select('*')
                 .neq('status', APPROVAL_STATUS.REJECTED)
-                .order('case_date', { ascending: false }),
-            'load cases'
-        ),
-        handleSupabase(
-            supabase
-                .from('case_products')
-                .select('case_id, product_id, product_name, company_name, category, sub_category, is_company_product, units, sequence'),
-            'load case products'
-        )
-    ]);
+                .order('case_date', { ascending: false })
+                .range(offset, offset + BATCH_SIZE - 1),
+            `load cases batch ${offset / BATCH_SIZE + 1}`
+        );
 
-    state.cases = cases || [];
-    state.caseProducts = products || [];
+        if (batch && batch.length > 0) {
+            allCases.push(...batch);
+            offset += BATCH_SIZE;
+            hasMore = batch.length === BATCH_SIZE;
+        } else {
+            hasMore = false;
+        }
+    }
+
+    state.cases = allCases;
+
+    // Load ALL products for these cases using .in() with batching
+    // Problem: .in() has ~1000 item limit, so we batch the case IDs
+    // Also: Each .in() query returns max 1000 rows, so we use .range() too
+    const allProducts = [];
+    if (state.cases.length > 0) {
+        const caseIds = state.cases.map(c => c.id);
+        const CASE_ID_BATCH_SIZE = 500; // Batch case IDs to avoid .in() limit
+
+        for (let i = 0; i < caseIds.length; i += CASE_ID_BATCH_SIZE) {
+            const batchIds = caseIds.slice(i, i + CASE_ID_BATCH_SIZE);
+
+            // For each batch of case IDs, load ALL products using .range() pagination
+            let offset = 0;
+            let hasMore = true;
+            const PRODUCT_BATCH_SIZE = 1000;
+
+            while (hasMore) {
+                const products = await handleSupabase(
+                    supabase
+                        .from('case_products')
+                        .select('case_id, product_id, product_name, company_name, category, sub_category, is_company_product, units, sequence')
+                        .in('case_id', batchIds)
+                        .range(offset, offset + PRODUCT_BATCH_SIZE - 1),
+                    `load case products for case batch ${Math.floor(i / CASE_ID_BATCH_SIZE) + 1}, product page ${offset / PRODUCT_BATCH_SIZE + 1}`
+                );
+
+                if (products && products.length > 0) {
+                    allProducts.push(...products);
+                    offset += PRODUCT_BATCH_SIZE;
+                    hasMore = products.length === PRODUCT_BATCH_SIZE;
+                } else {
+                    hasMore = false;
+                }
+            }
+        }
+    }
+
+    state.caseProducts = allProducts;
     state.caseProductsByCase = groupCaseProducts(state.caseProducts);
+
+    // Debug logging
+    console.log('📊 loadCases() completed:');
+    console.log('  - Cases loaded:', state.cases.length);
+    console.log('  - Case products loaded:', state.caseProducts.length);
+    console.log('  - Case products map size:', state.caseProductsByCase.size);
+
+    // Check for Nouran's specific case
+    const nouranCase = state.cases.find(c => c.case_code === 'CASE-20260106-MK31DPWQ');
+    if (nouranCase) {
+        const nouranProducts = state.caseProductsByCase.get(nouranCase.id);
+        console.log('  - ✅ Nouran case found:', nouranCase.case_code);
+        console.log('  - Products for Nouran case:', nouranProducts?.length || 0);
+        if (nouranProducts && nouranProducts.length > 0) {
+            console.log('  - ✅ Product details:', nouranProducts);
+        } else {
+            // Check if products exist in raw array
+            const rawProducts = state.caseProducts.filter(p => p.case_id === nouranCase.id);
+            console.log('  - ⚠️ Products in raw array:', rawProducts.length);
+            if (rawProducts.length > 0) {
+                console.log('  - ⚠️ Raw products found but not in map!', rawProducts);
+            } else {
+                console.log('  - ❌ NO PRODUCTS FOUND for case_id:', nouranCase.id);
+                console.log('  - Sample case_ids in products:', state.caseProducts.slice(0, 5).map(p => p.case_id));
+            }
+        }
+    } else {
+        console.log('  - ❌ Nouran case NOT FOUND in cases array');
+        console.log('  - Sample case codes:', state.cases.slice(0, 5).map(c => c.case_code));
+    }
 }
 
 function buildApprovalsDataset() {

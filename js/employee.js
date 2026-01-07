@@ -2724,27 +2724,48 @@ async function loadAccounts() {
 }
 
 async function loadCases() {
-    const [cases, products] = await Promise.all([
-        handleSupabase(
-            supabase
-                .from('v_case_details')
-                .select('*')
-                .eq('submitted_by_id', state.session.employeeId)
-                .neq('status', APPROVAL_STATUS.REJECTED)
-                .order('case_date', { ascending: false }),
-            'load my cases'
-        ),
-        handleSupabase(
-            supabase
-                .from('case_products')
-                .select('case_id, product_id, product_name, company_name, category, sub_category, is_company_product, units, sequence'),
-            'load my case products'
-        )
-    ]);
+    // First load cases
+    const cases = await handleSupabase(
+        supabase
+            .from('v_case_details')
+            .select('*')
+            .eq('submitted_by_id', state.session.employeeId)
+            .neq('status', APPROVAL_STATUS.REJECTED)
+            .order('case_date', { ascending: false }),
+        'load my cases'
+    );
 
     state.cases = cases || [];
-    state.caseProducts = products || [];
+
+    // Then load products only for those cases (batch if needed)
+    const allProducts = [];
+    if (state.cases.length > 0) {
+        const caseIds = state.cases.map(c => c.id);
+        const BATCH_SIZE = 500; // Supabase .in() limit is ~1000, use 500 to be safe
+
+        for (let i = 0; i < caseIds.length; i += BATCH_SIZE) {
+            const batchIds = caseIds.slice(i, i + BATCH_SIZE);
+            const products = await handleSupabase(
+                supabase
+                    .from('case_products')
+                    .select('case_id, product_id, product_name, company_name, category, sub_category, is_company_product, units, sequence')
+                    .in('case_id', batchIds),
+                `load my case products batch ${Math.floor(i / BATCH_SIZE) + 1}`
+            );
+            if (products && products.length > 0) {
+                allProducts.push(...products);
+            }
+        }
+    }
+
+    state.caseProducts = allProducts;
     state.caseProductsByCase = groupCaseProducts(state.caseProducts);
+
+    // Debug logging
+    console.log('📊 loadCases() completed:');
+    console.log('  - Cases loaded:', state.cases.length);
+    console.log('  - Case products loaded:', state.caseProducts.length);
+    console.log('  - Case products map size:', state.caseProductsByCase.size);
 }
 
 function buildApprovalDataset() {

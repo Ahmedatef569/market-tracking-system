@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Case Products</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1a1a1a;
+            color: #0f0;
+            padding: 20px;
+        }
+        .success { color: #0f0; }
+        .error { color: #f00; }
+        .warning { color: #ff0; }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #0f0;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background: #2a2a2a;
+        }
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #0c0;
+        }
+        pre {
+            background: #2a2a2a;
+            padding: 10px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Case Products Debug Tool</h1>
+    <p>This page tests if the frontend can retrieve case_products data from Supabase.</p>
+    
+    <button onclick="testNouranCase()">Test Nouran's Case (CASE-20260106-MK31DPWQ)</button>
+    <button onclick="testAllCaseProducts()">Load ALL Case Products</button>
+    <button onclick="testAllCases()">Load ALL Cases</button>
+    <button onclick="clearResults()">Clear</button>
+    
+    <div id="result"></div>
+
+    <script type="module">
+        // Import Supabase directly
+        import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.1';
+
+        // From js/config.js
+        const SUPABASE_URL = 'https://ovqjwpqtrnezjjlrybzk.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92cWp3cHF0cm5lempqbHJ5YnprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk3NDQ1ODUsImV4cCI6MjA3NTMyMDU4NX0.gMVg2wakMto7rnEUH6SGG0z3KqmAVXiK4HEVkLlf1HM';
+
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: { persistSession: false }
+        });
+
+        async function handleSupabase(requestPromise, context = 'operation') {
+            const { data, error } = await requestPromise;
+            if (error) {
+                console.error(`Supabase ${context} failed`, error);
+                throw new Error(error.message || `Supabase ${context} failed`);
+            }
+            return data;
+        }
+
+        window.testNouranCase = async function() {
+            const result = document.getElementById('result');
+            result.innerHTML = '<p class="warning">Loading Nouran\'s case...</p>';
+
+            try {
+                console.log('Starting test for Nouran case...');
+
+                // Get the specific case
+                const caseData = await handleSupabase(
+                    supabase
+                        .from('v_case_details')
+                        .select('*')
+                        .eq('case_code', 'CASE-20260106-MK31DPWQ')
+                        .single(),
+                    'load Nouran case'
+                );
+
+                console.log('Case data:', caseData);
+
+                // Get products for this case
+                const products = await handleSupabase(
+                    supabase
+                        .from('case_products')
+                        .select('*')
+                        .eq('case_id', caseData.id),
+                    'load Nouran case products'
+                );
+
+                console.log('Products:', products);
+
+                let html = '<h2 class="success">✅ Nouran\'s Case Data</h2>';
+                html += '<h3>Case Details:</h3>';
+                html += '<pre>' + JSON.stringify(caseData, null, 2) + '</pre>';
+
+                html += '<h3>Case Products (' + (products?.length || 0) + ' found):</h3>';
+                if (products && products.length > 0) {
+                    html += '<table>';
+                    html += '<tr><th>Product Name</th><th>Company</th><th>Category</th><th>Sub-Category</th><th>Type</th><th>Units</th></tr>';
+                    products.forEach(p => {
+                        html += '<tr>';
+                        html += '<td>' + p.product_name + '</td>';
+                        html += '<td>' + p.company_name + '</td>';
+                        html += '<td>' + p.category + '</td>';
+                        html += '<td>' + (p.sub_category || 'N/A') + '</td>';
+                        html += '<td>' + (p.is_company_product ? 'Company' : 'Competitor') + '</td>';
+                        html += '<td>' + p.units + '</td>';
+                        html += '</tr>';
+                    });
+                    html += '</table>';
+                } else {
+                    html += '<p class="error">❌ NO PRODUCTS FOUND!</p>';
+                }
+
+                result.innerHTML = html;
+            } catch (error) {
+                result.innerHTML = '<p class="error">❌ Error: ' + error.message + '</p><pre>' + error.stack + '</pre>';
+                console.error(error);
+            }
+        };
+
+        window.testAllCaseProducts = async function() {
+            const result = document.getElementById('result');
+            result.innerHTML = '<p class="warning">Loading ALL case products...</p>';
+
+            try {
+                console.log('Loading all case products...');
+
+                const products = await handleSupabase(
+                    supabase
+                        .from('case_products')
+                        .select('case_id, product_id, product_name, company_name, category, sub_category, is_company_product, units, sequence')
+                        .order('case_id')
+                        .limit(100),
+                    'load all case products'
+                );
+
+                console.log('Products loaded:', products?.length);
+
+                let html = '<h2 class="success">✅ All Case Products</h2>';
+                html += '<p>Total: ' + (products?.length || 0) + ' products</p>';
+
+                if (products && products.length > 0) {
+                    html += '<pre>' + JSON.stringify(products.slice(0, 10), null, 2) + '</pre>';
+                    html += '<p>... (showing first 10 of ' + products.length + ')</p>';
+                } else {
+                    html += '<p class="error">❌ NO PRODUCTS FOUND IN DATABASE!</p>';
+                }
+
+                result.innerHTML = html;
+            } catch (error) {
+                result.innerHTML = '<p class="error">❌ Error: ' + error.message + '</p><pre>' + error.stack + '</pre>';
+                console.error(error);
+            }
+        };
+
+        window.testAllCases = async function() {
+            const result = document.getElementById('result');
+            result.innerHTML = '<p class="warning">Loading ALL cases...</p>';
+
+            try {
+                console.log('Loading all cases...');
+
+                const cases = await handleSupabase(
+                    supabase
+                        .from('v_case_details')
+                        .select('*')
+                        .order('created_at', { ascending: false })
+                        .limit(10),
+                    'load recent cases'
+                );
+
+                console.log('Cases loaded:', cases?.length);
+
+                let html = '<h2 class="success">✅ Recent Cases</h2>';
+                html += '<p>Total: ' + (cases?.length || 0) + ' cases</p>';
+                html += '<pre>' + JSON.stringify(cases, null, 2) + '</pre>';
+
+                result.innerHTML = html;
+            } catch (error) {
+                result.innerHTML = '<p class="error">❌ Error: ' + error.message + '</p><pre>' + error.stack + '</pre>';
+                console.error(error);
+            }
+        };
+
+        window.clearResults = function() {
+            document.getElementById('result').innerHTML = '';
+        };
+
+        console.log('Debug page loaded successfully');
+    </script>
+</body>
+</html>
+
