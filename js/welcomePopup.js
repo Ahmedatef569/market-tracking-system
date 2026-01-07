@@ -28,7 +28,7 @@ function getWelcomeMessage(roleName, fullName) {
     // ⚠️ EDIT THIS TEXT TO CHANGE THE WELCOME MESSAGE ⚠️
     return `
         <div class="welcome-popup-text">
-            <div class="welcome-popup-greeting">🎉 Happy New Year !!</div>
+            <div class="welcome-popup-greeting">👋 Welcome</div>
             <div class="welcome-popup-name">${fullName}</div>
         </div>
     `;
