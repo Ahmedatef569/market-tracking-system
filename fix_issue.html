@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fix Case Products Issue</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        .step { margin: 20px 0; padding: 15px; border-left: 4px solid #4CAF50; background: #f9f9f9; }
+        .error { border-left-color: #f44336; background: #ffebee; }
+        .success { border-left-color: #4CAF50; background: #e8f5e9; }
+        .warning { border-left-color: #ff9800; background: #fff3e0; }
+        button { padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #45a049; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; border-radius: 4px; }
+        .result { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Fix Case Products Display Issue</h1>
+        
+        <div class="step">
+            <h3>Step 1: Clear Browser Storage</h3>
+            <p>This will clear any corrupted localStorage data that might be causing the issue.</p>
+            <button onclick="clearStorage()">Clear Storage</button>
+            <div id="storage-result" class="result"></div>
+        </div>
+
+        <div class="step">
+            <h3>Step 2: Test Database Connection</h3>
+            <p>This will verify that the database has the product data.</p>
+            <button onclick="testDatabase()">Test Database</button>
+            <div id="db-result" class="result"></div>
+        </div>
+
+        <div class="step">
+            <h3>Step 3: Test Data Loading</h3>
+            <p>This will test if the frontend can load and group products correctly.</p>
+            <button onclick="testDataLoading()">Test Data Loading</button>
+            <div id="load-result" class="result"></div>
+        </div>
+
+        <div class="step warning">
+            <h3>⚠️ If all tests pass but issue persists:</h3>
+            <p>The problem might be in how the table is rendering. Check the browser console for errors.</p>
+        </div>
+    </div>
+
+    <script type="module">
+        import { supabase, handleSupabase } from './js/supabaseClient.js';
+        import { groupCaseProducts } from './js/caseAnalytics.js';
+
+        window.clearStorage = function() {
+            const result = document.getElementById('storage-result');
+            try {
+                // Clear all localStorage
+                const keys = Object.keys(localStorage);
+                keys.forEach(key => localStorage.removeItem(key));
+                
+                // Clear sessionStorage
+                sessionStorage.clear();
+                
+                result.innerHTML = `<div class="success"><strong>✅ Success!</strong><br>Cleared ${keys.length} localStorage items and sessionStorage.<br><strong>Now refresh the page and try again!</strong></div>`;
+            } catch (error) {
+                result.innerHTML = `<div class="error"><strong>❌ Error:</strong> ${error.message}</div>`;
+            }
+        };
+
+        window.testDatabase = async function() {
+            const result = document.getElementById('db-result');
+            result.innerHTML = '<p>Testing...</p>';
+            
+            try {
+                const cases = await handleSupabase(
+                    supabase
+                        .from('cases')
+                        .select('id, case_code, total_company_units, total_competitor_units')
+                        .order('created_at', { ascending: false })
+                        .limit(3),
+                    'load cases'
+                );
+
+                const caseIds = cases.map(c => c.id);
+                const products = await handleSupabase(
+                    supabase
+                        .from('case_products')
+                        .select('*')
+                        .in('case_id', caseIds),
+                    'load products'
+                );
+
+                let html = '<div class="success"><strong>✅ Database is working!</strong><br><br>';
+                html += `<strong>Recent Cases:</strong> ${cases.length}<br>`;
+                html += `<strong>Products for these cases:</strong> ${products.length}<br><br>`;
+                
+                html += '<table border="1" cellpadding="5" style="width:100%; border-collapse: collapse;">';
+                html += '<tr><th>Case Code</th><th>Products</th><th>Total Units</th></tr>';
+                
+                cases.forEach(c => {
+                    const caseProds = products.filter(p => p.case_id === c.id);
+                    const prodNames = caseProds.map(p => p.product_name).join(', ');
+                    const totalUnits = c.total_company_units + c.total_competitor_units;
+                    const rowStyle = caseProds.length === 0 ? 'background: #ffebee;' : '';
+                    html += `<tr style="${rowStyle}">`;
+                    html += `<td>${c.case_code}</td>`;
+                    html += `<td>${prodNames || '<strong style="color:red;">NO PRODUCTS!</strong>'}</td>`;
+                    html += `<td>${totalUnits}</td>`;
+                    html += '</tr>';
+                });
+                html += '</table></div>';
+                
+                result.innerHTML = html;
+            } catch (error) {
+                result.innerHTML = `<div class="error"><strong>❌ Database Error:</strong><br>${error.message}<br><pre>${error.stack}</pre></div>`;
+            }
+        };
+
+        window.testDataLoading = async function() {
+            const result = document.getElementById('load-result');
+            result.innerHTML = '<p>Testing...</p>';
+            
+            try {
+                const [cases, products] = await Promise.all([
+                    handleSupabase(
+                        supabase
+                            .from('v_case_details')
+                            .select('*')
+                            .neq('status', 'rejected')
+                            .order('case_date', { ascending: false })
+                            .limit(5),
+                        'load cases'
+                    ),
+                    handleSupabase(
+                        supabase
+                            .from('case_products')
+                            .select('case_id, product_id, product_name, company_name, category, sub_category, is_company_product, units, sequence'),
+                        'load case products'
+                    )
+                ]);
+
+                const caseProductsByCase = groupCaseProducts(products);
+
+                let html = '<div class="success"><strong>✅ Data Loading Works!</strong><br><br>';
+                html += `<strong>Cases loaded:</strong> ${cases.length}<br>`;
+                html += `<strong>Products loaded:</strong> ${products.length}<br>`;
+                html += `<strong>Cases with products mapped:</strong> ${caseProductsByCase.size}<br><br>`;
+                
+                html += '<strong>Product Mapping Test:</strong><br>';
+                html += '<table border="1" cellpadding="5" style="width:100%; border-collapse: collapse;">';
+                html += '<tr><th>Case Code</th><th>Case ID</th><th>Products in Map</th><th>Product Names</th></tr>';
+                
+                cases.slice(0, 5).forEach(c => {
+                    const prods = caseProductsByCase.get(c.id) || [];
+                    const prodNames = prods.map(p => p.product_name).join(', ');
+                    const rowStyle = prods.length === 0 ? 'background: #ffebee;' : 'background: #e8f5e9;';
+                    html += `<tr style="${rowStyle}">`;
+                    html += `<td>${c.case_code}</td>`;
+                    html += `<td>${c.id.substring(0, 12)}...</td>`;
+                    html += `<td><strong>${prods.length}</strong></td>`;
+                    html += `<td>${prodNames || '<strong style="color:red;">EMPTY!</strong>'}</td>`;
+                    html += '</tr>';
+                });
+                html += '</table>';
+                
+                // Check for mismatches
+                const casesWithoutProducts = cases.filter(c => {
+                    const prods = caseProductsByCase.get(c.id) || [];
+                    return prods.length === 0 && (c.total_company_units > 0 || c.total_competitor_units > 0);
+                });
+                
+                if (casesWithoutProducts.length > 0) {
+                    html += '<br><div class="error"><strong>⚠️ FOUND THE PROBLEM!</strong><br>';
+                    html += `${casesWithoutProducts.length} cases have units but NO products in the map!<br>`;
+                    html += '<pre>' + JSON.stringify(casesWithoutProducts.map(c => ({
+                        case_code: c.case_code,
+                        id: c.id,
+                        total_units: c.total_company_units + c.total_competitor_units
+                    })), null, 2) + '</pre></div>';
+                }
+                
+                html += '</div>';
+                result.innerHTML = html;
+            } catch (error) {
+                result.innerHTML = `<div class="error"><strong>❌ Loading Error:</strong><br>${error.message}<br><pre>${error.stack}</pre></div>`;
+            }
+        };
+    </script>
+</body>
+</html>
+

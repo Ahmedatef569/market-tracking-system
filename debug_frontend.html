@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Frontend Data</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #0f0; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #0f0; }
+        .error { color: #f00; }
+        .success { color: #0f0; }
+        .warning { color: #ff0; }
+        pre { background: #000; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Frontend Data Debug Tool</h1>
+    
+    <div class="section">
+        <h2>Step 1: Load Cases from Database</h2>
+        <button onclick="loadData()">Load Data</button>
+        <div id="result"></div>
+    </div>
+
+    <script type="module">
+        import { supabase, handleSupabase } from './js/supabaseClient.js';
+        import { groupCaseProducts } from './js/caseAnalytics.js';
+
+        window.loadData = async function() {
+            const result = document.getElementById('result');
+            result.innerHTML = '<p class="warning">Loading...</p>';
+
+            try {
+                // Load cases
+                const cases = await handleSupabase(
+                    supabase
+                        .from('v_case_details')
+                        .select('*')
+                        .neq('status', 'rejected')
+                        .order('case_date', { ascending: false })
+                        .limit(5),
+                    'load cases'
+                );
+
+                // Load products
+                const products = await handleSupabase(
+                    supabase
+                        .from('case_products')
+                        .select('case_id, product_id, product_name, company_name, category, sub_category, is_company_product, units, sequence'),
+                    'load case products'
+                );
+
+                // Group products by case
+                const caseProductsByCase = groupCaseProducts(products);
+
+                // Display results
+                let html = '<h3 class="success">✅ Data Loaded Successfully</h3>';
+                
+                html += `<h4>Cases (${cases.length} total)</h4>`;
+                html += '<pre>' + JSON.stringify(cases.slice(0, 2), null, 2) + '</pre>';
+                
+                html += `<h4>Products (${products.length} total)</h4>`;
+                html += '<pre>' + JSON.stringify(products.slice(0, 5), null, 2) + '</pre>';
+                
+                html += '<h4>Products Grouped by Case</h4>';
+                html += '<table border="1" cellpadding="5" style="color: #0f0; border-color: #0f0;">';
+                html += '<tr><th>Case Code</th><th>Case ID</th><th>Product Count</th><th>Products</th></tr>';
+                
+                cases.slice(0, 5).forEach(c => {
+                    const caseProds = caseProductsByCase.get(c.id) || [];
+                    const prodNames = caseProds.map(p => p.product_name).join(', ');
+                    const rowClass = caseProds.length === 0 ? 'error' : 'success';
+                    html += `<tr class="${rowClass}">`;
+                    html += `<td>${c.case_code}</td>`;
+                    html += `<td>${c.id.substring(0, 8)}...</td>`;
+                    html += `<td>${caseProds.length}</td>`;
+                    html += `<td>${prodNames || 'NO PRODUCTS!'}</td>`;
+                    html += '</tr>';
+                });
+                html += '</table>';
+
+                // Check for cases with no products
+                const casesWithoutProducts = cases.filter(c => {
+                    const prods = caseProductsByCase.get(c.id) || [];
+                    return prods.length === 0;
+                });
+
+                if (casesWithoutProducts.length > 0) {
+                    html += `<h4 class="error">⚠️ ${casesWithoutProducts.length} Cases WITHOUT Products:</h4>`;
+                    html += '<pre>' + JSON.stringify(casesWithoutProducts.map(c => ({
+                        case_code: c.case_code,
+                        id: c.id,
+                        created_at: c.created_at,
+                        total_company_units: c.total_company_units,
+                        total_competitor_units: c.total_competitor_units
+                    })), null, 2) + '</pre>';
+                }
+
+                result.innerHTML = html;
+
+            } catch (error) {
+                result.innerHTML = `<p class="error">❌ Error: ${error.message}</p><pre>${error.stack}</pre>`;
+            }
+        };
+    </script>
+</body>
+</html>
+

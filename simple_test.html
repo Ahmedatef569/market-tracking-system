@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Test - No Modules</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; }
+        button { padding: 15px 30px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 18px; margin: 10px; }
+        button:hover { background: #45a049; }
+        .result { margin-top: 20px; padding: 15px; border-radius: 4px; }
+        .success { background: #e8f5e9; border: 2px solid #4CAF50; }
+        .error { background: #ffebee; border: 2px solid #f44336; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Simple Diagnostic Test</h1>
+        
+        <h2>Test 1: Clear Browser Storage</h2>
+        <button onclick="test1()">Clear All Storage</button>
+        <div id="result1" class="result"></div>
+
+        <h2>Test 2: Check Console Errors</h2>
+        <p>Open the browser console (F12) and look for any red errors. Copy them here.</p>
+
+        <h2>Test 3: Manual Database Check</h2>
+        <p>We'll do this manually using the browser console.</p>
+        <button onclick="test3()">Show Console Commands</button>
+        <div id="result3" class="result"></div>
+    </div>
+
+    <script>
+        function test1() {
+            const result = document.getElementById('result1');
+            try {
+                // Get all localStorage keys
+                const localKeys = Object.keys(localStorage);
+                const sessionKeys = Object.keys(sessionStorage);
+                
+                // Clear everything
+                localStorage.clear();
+                sessionStorage.clear();
+                
+                // Also clear any service worker cache
+                if ('caches' in window) {
+                    caches.keys().then(names => {
+                        names.forEach(name => caches.delete(name));
+                    });
+                }
+                
+                result.className = 'result success';
+                result.innerHTML = `
+                    <h3>✅ Storage Cleared!</h3>
+                    <p><strong>localStorage items removed:</strong> ${localKeys.length}</p>
+                    <p><strong>sessionStorage items removed:</strong> ${sessionKeys.length}</p>
+                    <p><strong>Cache cleared:</strong> Yes</p>
+                    <br>
+                    <p style="font-size: 18px; color: #d32f2f;"><strong>⚠️ NOW DO THIS:</strong></p>
+                    <ol style="text-align: left;">
+                        <li>Close ALL browser tabs for this site</li>
+                        <li>Close the browser completely</li>
+                        <li>Reopen the browser</li>
+                        <li>Go to admin.html</li>
+                        <li>Check if products appear</li>
+                    </ol>
+                    <br>
+                    <p><strong>Items that were in localStorage:</strong></p>
+                    <pre>${localKeys.join('\n') || 'None'}</pre>
+                `;
+            } catch (error) {
+                result.className = 'result error';
+                result.innerHTML = `<h3>❌ Error:</h3><p>${error.message}</p>`;
+            }
+        }
+
+        function test3() {
+            const result = document.getElementById('result3');
+            result.className = 'result success';
+            result.innerHTML = `
+                <h3>📋 Copy these commands into the browser console:</h3>
+                <p>Press F12 to open console, then paste these one by one:</p>
+                
+                <h4>Command 1: Import Supabase</h4>
+                <pre>import('./js/supabaseClient.js').then(m => window.supabaseModule = m)</pre>
+                
+                <h4>Command 2: Load Cases (wait for Command 1 to finish first!)</h4>
+                <pre>supabaseModule.handleSupabase(
+    supabaseModule.supabase
+        .from('v_case_details')
+        .select('*')
+        .order('case_date', { ascending: false })
+        .limit(3)
+).then(cases => {
+    console.log('Cases:', cases);
+    window.testCases = cases;
+})</pre>
+                
+                <h4>Command 3: Load Products (wait for Command 2 to finish!)</h4>
+                <pre>supabaseModule.handleSupabase(
+    supabaseModule.supabase
+        .from('case_products')
+        .select('*')
+).then(products => {
+    console.log('Products:', products);
+    window.testProducts = products;
+    
+    // Group by case
+    const grouped = new Map();
+    products.forEach(p => {
+        if (!grouped.has(p.case_id)) grouped.set(p.case_id, []);
+        grouped.get(p.case_id).push(p);
+    });
+    
+    // Check if test cases have products
+    testCases.forEach(c => {
+        const prods = grouped.get(c.id) || [];
+        console.log(\`Case \${c.case_code}: \${prods.length} products\`, prods.map(p => p.product_name));
+    });
+})</pre>
+                
+                <p style="color: #d32f2f;"><strong>After running these commands, tell me what you see in the console!</strong></p>
+            `;
+        }
+    </script>
+</body>
+</html>
+

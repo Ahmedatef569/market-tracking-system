@@ -27,6 +27,7 @@ import { applyChartDefaults, resetChartDefaults, buildLineChart, buildBarChart, 
 import { fetchNotifications, markNotificationsRead, createNotification } from './notifications.js';
 import { fetchSentMessages, fetchReceivedMessages, getUnreadMessageCount, sendMessage, deleteMessages, markMessageAsRead } from './messages.js';
 import { initFormModal, openFormModal, refreshFormHosts, closeFormModal } from './formModal.js';
+import { initBadgeSupport, updateBadge, clearBadge } from './badge.js';
 import {
     groupCaseProducts,
     computeCaseMetrics,
@@ -146,6 +147,9 @@ async function init() {
     state.session = await hydrateSession(state.session, { force: true });
 
     initThemeToggle(elements.themeToggle, { iconElement: elements.themeToggleIcon, onThemeChange: resetChartDefaults });
+
+    // Initialize badge support for app icon notifications
+    await initBadgeSupport();
 
     // Listen for theme changes and re-render dashboard
     window.addEventListener('themeChanged', () => {
@@ -405,6 +409,9 @@ async function handleMarkNotificationsRead() {
 
 function updateNotificationsUI(notifications = []) {
     if (!elements.notificationsIndicator || !elements.notificationsContainer) return;
+
+    // Update app icon badge with notification count
+    updateBadge(notifications.length);
 
     // Trigger bell ringing animation if there are new notifications
     if (notifications.length) {
@@ -921,6 +928,24 @@ async function ensureLine(name) {
     if (!trimmed) return null;
     const existing = state.lines.find((line) => line.name.toLowerCase() === trimmed.toLowerCase());
     if (existing) return existing.id;
+
+    // Check database in case state is out of sync
+    const { data: dbExisting } = await supabase
+        .from('lines')
+        .select('id, name')
+        .ilike('name', trimmed)
+        .maybeSingle();
+
+    if (dbExisting) {
+        // Add to state if missing
+        if (!existing) {
+            state.lines.push(dbExisting);
+            state.lines.sort((a, b) => a.name.localeCompare(b.name));
+            refreshSharedDatalists();
+        }
+        return dbExisting.id;
+    }
+
     const inserted = await handleSupabase(
         supabase
             .from('lines')
@@ -5862,15 +5887,11 @@ async function processDoctorUpload(file) {
 
             try {
                 // Check if doctor already exists (case-insensitive)
-                const existingDoctor = await handleSupabase(
-                    supabase
-                        .from('doctors')
-                        .select('id, name')
-                        .ilike('name', name)
-                        .single(),
-                    'check existing doctor',
-                    { suppressError: true }
-                );
+                const { data: existingDoctor } = await supabase
+                    .from('doctors')
+                    .select('id, name')
+                    .ilike('name', name)
+                    .maybeSingle();
 
                 const isUpdate = !!existingDoctor;
 
