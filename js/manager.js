@@ -1942,14 +1942,44 @@ function renderTeamCases() {
 function renderTeamCasesTable(cases = []) {
     const tableData = cases.map((caseItem) => buildCaseTableRow(caseItem, state.teamCaseProductsByCase));
     const columns = buildCaseTableColumns(tableFormatters);
+
+    // Find case_code column index and insert actions after it
+    const caseCodeIndex = columns.findIndex(col => col.field === 'case_code');
+    if (caseCodeIndex !== -1 && !columns.some((column) => column.field === 'actions')) {
+        columns.splice(caseCodeIndex + 1, 0, {
+            title: 'Actions',
+            field: 'actions',
+            width: 120,
+            hozAlign: 'center',
+            formatter: tableFormatters.actions([
+                {
+                    name: 'view',
+                    label: 'View',
+                    icon: 'bi bi-eye',
+                    variant: 'btn-gradient'
+                }
+            ]),
+            headerSort: false
+        });
+    }
+
     state.tables.teamCases = createTable('team-cases-table', columns, tableData, {
         height: 520,
         initialSort: [{ column: 'created_at', dir: 'desc' }]
     });
+
+    bindTableActions(state.tables.teamCases, {
+        view: (rowData) => viewTeamCaseDetails(rowData.id)
+    });
+
     attachProductsToggle(state.tables.teamCases, {
-        anchorField: 'product3_units',
+        anchorField: 'actions',
         storageKey: 'manager_team_cases_products_toggle'
     });
+}
+
+function viewTeamCaseDetails(id) {
+    populateTeamCaseReview(id, {}, false);
 }
 
 function renderTeamCaseStats(cases = []) {
@@ -4374,7 +4404,7 @@ function showManagerReviewModal(title, content, options = {}) {
     modalInstance.show();
 }
 
-function populateTeamCaseReview(id, payload = {}) {
+function populateTeamCaseReview(id, payload = {}, showActions = false) {
     const caseRecord = state.teamCases.find((item) => item.id === id) || payload || {};
     const products = state.teamCaseProductsByCase.get(id) || [];
     const specialist = caseRecord.submitted_by_name || payload.submitted_by_name || 'N/A';
@@ -4475,7 +4505,7 @@ function populateTeamCaseReview(id, payload = {}) {
     };
 
     showManagerReviewModal(`Review Case ${caseRecord.case_code || ''}`, content, {
-        showCaseActions: true,
+        showCaseActions: showActions,
         caseRecord: recordForApproval
     });
 }
@@ -4486,7 +4516,7 @@ function reviewTeamApproval(record) {
     } else if (record.type === 'account') {
         populateTeamAccountForm(record.id);
     } else if (record.type === 'case') {
-        populateTeamCaseReview(record.id, record.payload);
+        populateTeamCaseReview(record.id, record.payload, true);
     }
 }
 function setupMyCaseForm() {
@@ -4759,13 +4789,161 @@ function renderMyCases() {
 function renderMyCasesTable(cases = []) {
     const tableData = cases.map((caseItem) => buildCaseTableRow(caseItem, state.myCaseProductsByCase));
     const columns = buildCaseTableColumns(tableFormatters);
+
+    // Find case_code column index and insert actions after it
+    const caseCodeIndex = columns.findIndex(col => col.field === 'case_code');
+    if (caseCodeIndex !== -1 && !columns.some((column) => column.field === 'actions')) {
+        columns.splice(caseCodeIndex + 1, 0, {
+            title: 'Actions',
+            field: 'actions',
+            width: 120,
+            hozAlign: 'center',
+            formatter: tableFormatters.actions([
+                {
+                    name: 'view',
+                    label: 'View',
+                    icon: 'bi bi-eye',
+                    variant: 'btn-gradient'
+                }
+            ]),
+            headerSort: false
+        });
+    }
+
     state.tables.myCases = createTable('manager-cases-table', columns, tableData, {
         height: 520,
         initialSort: [{ column: 'created_at', dir: 'desc' }]
     });
+
+    bindTableActions(state.tables.myCases, {
+        view: (rowData) => viewMyCaseDetails(rowData.id)
+    });
+
     attachProductsToggle(state.tables.myCases, {
-        anchorField: 'product3_units',
+        anchorField: 'actions',
         storageKey: 'manager_my_cases_products_toggle'
+    });
+}
+
+function viewMyCaseDetails(id) {
+    const caseRecord = state.myCases.find((item) => item.id === id) || {};
+    const products = state.myCaseProductsByCase.get(id) || [];
+    const specialist = caseRecord.submitted_by_name || 'N/A';
+    const doctor = caseRecord.doctor_name || 'N/A';
+    const account = caseRecord.account_name || 'N/A';
+    const accountType = caseRecord.account_type || 'N/A';
+    const status = caseRecord.status || 'Pending';
+    const caseDate = caseRecord.case_date ? formatDate(caseRecord.case_date) : 'N/A';
+    const notes = caseRecord.notes || 'No additional notes provided.';
+
+    let companyUnits = 0;
+    let competitorUnits = 0;
+    products.forEach((p) => {
+        if (p.is_company_product) {
+            companyUnits += p.units || 0;
+        } else {
+            competitorUnits += p.units || 0;
+        }
+    });
+
+    const content = `
+        <div class="case-review">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="review-field">
+                        <span>Case Code</span>
+                        <strong>${caseRecord.case_code || 'N/A'}</strong>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="review-field">
+                        <span>Submission Date</span>
+                        <strong>${caseDate}</strong>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="review-field">
+                        <span>Product Specialist</span>
+                        <strong>${specialist}</strong>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="review-field">
+                        <span>Status</span>
+                        <strong>${status}</strong>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="review-field">
+                        <span>Doctor</span>
+                        <strong>${doctor}</strong>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="review-field">
+                        <span>Account</span>
+                        <strong>${account}</strong>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="review-field">
+                        <span>Account Type</span>
+                        <strong>${accountType}</strong>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="review-field">
+                        <span>Total Company Units</span>
+                        <strong>${formatNumber(companyUnits)}</strong>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="review-field">
+                        <span>Total Competitor Units</span>
+                        <strong>${formatNumber(competitorUnits)}</strong>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="review-field">
+                        <span>Notes</span>
+                        <p>${notes}</p>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <h6 class="mb-2">Products (${products.length})</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th>Company</th>
+                                    <th>Category</th>
+                                    <th>Sub-Category</th>
+                                    <th>Type</th>
+                                    <th>Units</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${products.map((p) => `
+                                    <tr>
+                                        <td>${p.product_name || 'N/A'}</td>
+                                        <td>${p.company_name || 'N/A'}</td>
+                                        <td>${p.category || 'N/A'}</td>
+                                        <td>${p.sub_category || 'N/A'}</td>
+                                        <td>${p.is_company_product ? 'Company' : 'Competitor'}</td>
+                                        <td>${formatNumber(p.units || 0)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    showManagerReviewModal(`View Case ${caseRecord.case_code || ''}`, content, {
+        showCaseActions: false
     });
 }
 

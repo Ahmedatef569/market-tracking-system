@@ -540,24 +540,24 @@ export function buildCaseTableColumns(tableFormatters) {
         { title: 'Doctor', field: 'doctor', minWidth: 180, headerFilter: 'input' },
         { title: 'Date', field: 'case_date', formatter: tableFormatters.date, width: 140 },
         { title: 'Case Code', field: 'case_code', width: 150, headerFilter: 'input' },
-        { title: 'Product 1', field: 'product1_name', minWidth: 180, headerFilter: 'input' },
-        { title: 'P1 Type', field: 'product1_type', width: 130 },
-        { title: 'P1 Company', field: 'product1_company', minWidth: 160, headerFilter: 'input' },
-        { title: 'P1 Category', field: 'product1_category', minWidth: 160, headerFilter: 'input' },
-        { title: 'P1 Sub-category', field: 'product1_sub_category', minWidth: 180, headerFilter: 'input' },
-        { title: 'P1 Units', field: 'product1_units', formatter: tableFormatters.number(), width: 140 },
-        { title: 'Product 2', field: 'product2_name', minWidth: 180, headerFilter: 'input' },
-        { title: 'P2 Type', field: 'product2_type', width: 130 },
-        { title: 'P2 Company', field: 'product2_company', minWidth: 160, headerFilter: 'input' },
-        { title: 'P2 Category', field: 'product2_category', minWidth: 160, headerFilter: 'input' },
-        { title: 'P2 Sub-category', field: 'product2_sub_category', minWidth: 180, headerFilter: 'input' },
-        { title: 'P2 Units', field: 'product2_units', formatter: tableFormatters.number(), width: 140 },
-        { title: 'Product 3', field: 'product3_name', minWidth: 180, headerFilter: 'input' },
-        { title: 'P3 Type', field: 'product3_type', width: 130 },
-        { title: 'P3 Company', field: 'product3_company', minWidth: 160, headerFilter: 'input' },
-        { title: 'P3 Category', field: 'product3_category', minWidth: 160, headerFilter: 'input' },
-        { title: 'P3 Sub-category', field: 'product3_sub_category', minWidth: 180, headerFilter: 'input' },
-        { title: 'P3 Units', field: 'product3_units', formatter: tableFormatters.number(), width: 140 },
+        { title: 'Product 1', field: 'product1_name', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P1 Type', field: 'product1_type', width: 130, visible: false },
+        { title: 'P1 Company', field: 'product1_company', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P1 Category', field: 'product1_category', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P1 Sub-category', field: 'product1_sub_category', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P1 Units', field: 'product1_units', formatter: tableFormatters.number(), width: 140, visible: false },
+        { title: 'Product 2', field: 'product2_name', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P2 Type', field: 'product2_type', width: 130, visible: false },
+        { title: 'P2 Company', field: 'product2_company', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P2 Category', field: 'product2_category', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P2 Sub-category', field: 'product2_sub_category', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P2 Units', field: 'product2_units', formatter: tableFormatters.number(), width: 140, visible: false },
+        { title: 'Product 3', field: 'product3_name', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P3 Type', field: 'product3_type', width: 130, visible: false },
+        { title: 'P3 Company', field: 'product3_company', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P3 Category', field: 'product3_category', minWidth: 160, headerFilter: 'input', visible: false },
+        { title: 'P3 Sub-category', field: 'product3_sub_category', minWidth: 180, headerFilter: 'input', visible: false },
+        { title: 'P3 Units', field: 'product3_units', formatter: tableFormatters.number(), width: 140, visible: false },
         { title: 'Product 4', field: 'product4_name', minWidth: 180, headerFilter: 'input', visible: false },
         { title: 'P4 Type', field: 'product4_type', width: 130, visible: false },
         { title: 'P4 Company', field: 'product4_company', minWidth: 160, headerFilter: 'input', visible: false },
@@ -799,11 +799,14 @@ export const CASE_EXPORT_HEADERS = {
  * @param {string} options.anchorField - Field name to attach the toggle button to (e.g., 'product3_units')
  * @param {string} options.storageKey - LocalStorage key to persist toggle state
  */
-export function attachProductsToggle(table, { anchorField = 'product3_units', storageKey = 'cases_products_toggle' } = {}) {
+export function attachProductsToggle(table, { anchorField = 'actions', storageKey = 'cases_products_toggle' } = {}) {
     if (!table || !table.getColumn || !anchorField) return;
     if (table._productsToggleInitialized) return;
 
     const toggleFields = [
+        'product1_name', 'product1_type', 'product1_company', 'product1_category', 'product1_sub_category', 'product1_units',
+        'product2_name', 'product2_type', 'product2_company', 'product2_category', 'product2_sub_category', 'product2_units',
+        'product3_name', 'product3_type', 'product3_company', 'product3_category', 'product3_sub_category', 'product3_units',
         'product4_name', 'product4_type', 'product4_company', 'product4_category', 'product4_sub_category', 'product4_units',
         'product5_name', 'product5_type', 'product5_company', 'product5_category', 'product5_sub_category', 'product5_units',
         'product6_name', 'product6_type', 'product6_company', 'product6_category', 'product6_sub_category', 'product6_units',
@@ -827,7 +830,7 @@ export function attachProductsToggle(table, { anchorField = 'product3_units', st
         toggleBtn.className = 'btn btn-sm btn-outline-ghost products-toggle-btn';
         toggleBtn.textContent = '+';
         toggleBtn.setAttribute('aria-expanded', 'false');
-        toggleBtn.setAttribute('aria-label', 'Show products 4-12 columns');
+        toggleBtn.setAttribute('aria-label', 'Show case details columns');
         toggleBtn.style.marginLeft = '0.5rem';
 
         titleEl.classList.add('products-toggle-title');
@@ -852,20 +855,28 @@ export function attachProductsToggle(table, { anchorField = 'product3_units', st
         };
 
         const applyState = (expanded) => {
-            toggleFields.forEach((field) => {
-                const column = table.getColumn(field);
-                if (!column) return;
+            // Batch DOM updates for better performance
+            const columns = toggleFields.map(field => table.getColumn(field)).filter(col => col);
+
+            // Use blockRedraw to prevent multiple redraws
+            table.blockRedraw();
+
+            columns.forEach((column) => {
                 if (expanded) {
                     column.show();
                 } else {
                     column.hide();
                 }
             });
+
+            // Restore redraw
+            table.restoreRedraw();
+
             toggleBtn.textContent = expanded ? '−' : '+';
             toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
             toggleBtn.setAttribute(
                 'aria-label',
-                expanded ? 'Hide products 4-12 columns' : 'Show products 4-12 columns'
+                expanded ? 'Hide case details columns' : 'Show case details columns'
             );
             setStoredState(expanded);
         };
@@ -883,15 +894,21 @@ export function attachProductsToggle(table, { anchorField = 'product3_units', st
         table._productsToggleInitialized = true;
     };
 
-    if (!table.getColumn(anchorField)) {
+    // Try to initialize immediately if column exists
+    if (table.getColumn(anchorField)) {
+        initialize();
+    } else {
+        // Otherwise wait for table to be built
         table.on('tableBuilt', () => {
             if (table._productsToggleInitialized) return;
-            initialize();
+            // Use setTimeout to ensure DOM is fully ready
+            setTimeout(() => {
+                if (!table._productsToggleInitialized) {
+                    initialize();
+                }
+            }, 50);
         });
-        return;
     }
-
-    initialize();
 }
 
 export function collectCaseFilterOptions(caseProducts = [], products = []) {

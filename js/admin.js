@@ -2902,7 +2902,7 @@ function populateAccountForm(id, options = {}) {
     toggleFormReadOnly(form, Boolean(options.readonly));
 }
 
-function populateCaseReview(id, payload = {}) {
+function populateCaseReview(id, payload = {}, showActions = false) {
     const caseRecord = state.cases.find((item) => item.id === id) || payload || {};
     const products = state.caseProductsByCase.get(id) || [];
     const specialist = caseRecord.submitted_by_name || caseRecord.owner_name || 'N/A';
@@ -3003,7 +3003,7 @@ function populateCaseReview(id, payload = {}) {
     };
 
     showReviewModal(`Review Case ${caseRecord.case_code || ''}`, content, {
-        showCaseActions: true,
+        showCaseActions: showActions,
         caseRecord: recordForApproval
     });
 }
@@ -3758,18 +3758,27 @@ function renderCaseStats(cases) {
 function renderCasesTable(cases) {
     const tableData = cases.map((caseItem) => buildCaseTableRow(caseItem, state.caseProductsByCase));
     const columns = buildCaseTableColumns(tableFormatters);
-    if (!columns.some((column) => column.field === 'actions')) {
-        columns.push({
+
+    // Find case_code column index and insert actions after it
+    const caseCodeIndex = columns.findIndex(col => col.field === 'case_code');
+    if (caseCodeIndex !== -1 && !columns.some((column) => column.field === 'actions')) {
+        columns.splice(caseCodeIndex + 1, 0, {
             title: 'Actions',
             field: 'actions',
-            width: 140,
+            width: 200,
             hozAlign: 'center',
             formatter: tableFormatters.actions([
+                {
+                    name: 'view',
+                    label: 'View',
+                    icon: 'bi bi-eye',
+                    variant: 'btn-gradient'
+                },
                 {
                     name: 'delete',
                     label: 'Delete',
                     icon: 'bi bi-trash',
-                variant: 'btn-outline-ghost'
+                    variant: 'btn-outline-ghost'
                 }
             ]),
             headerSort: false
@@ -3781,12 +3790,17 @@ function renderCasesTable(cases) {
         initialSort: [{ column: 'created_at', dir: 'desc' }]
     });
     bindTableActions(state.tables.cases, {
+        view: (rowData) => viewCaseDetails(rowData.id),
         delete: (rowData) => deleteCase(rowData.id)
     });
     attachProductsToggle(state.tables.cases, {
-        anchorField: 'product3_units',
+        anchorField: 'actions',
         storageKey: 'admin_cases_products_toggle'
     });
+}
+
+function viewCaseDetails(id) {
+    populateCaseReview(id, {}, false);
 }
 
 function exportCases() {
@@ -3867,7 +3881,7 @@ function reviewApproval(record) {
     } else if (record.type === 'account') {
         populateAccountForm(record.id);
     } else if (record.type === 'case') {
-        populateCaseReview(record.id, record.payload);
+        populateCaseReview(record.id, record.payload, true);
     }
 }
 
