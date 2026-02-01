@@ -14,7 +14,63 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <link href="vendor/tabulator/tabulator_midnight.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/app.css">
+    <link rel="stylesheet" href="css/app.css?v=2.0.1">
+    <style>
+        /* FORCE MOBILE STAT CARD STYLING - INLINE TO OVERRIDE CACHE */
+        @media (max-width: 768px) {
+            .stat-cards,
+            .stat-cards.stat-cards--compact,
+            .stat-cards.stat-cards--wide,
+            .stat-cards.stat-cards--quad {
+                display: grid !important;
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 12px !important;
+            }
+
+            .stat-card {
+                padding: 12px 14px !important;
+                text-align: center !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: center !important;
+                align-items: center !important;
+            }
+
+            .stat-card h4 {
+                font-size: clamp(0.7rem, 3.5vw, 0.85rem) !important;
+                margin: 0 0 6px !important;
+                text-align: center !important;
+            }
+
+            .stat-card .value {
+                font-size: clamp(1.2rem, 5vw, 1.6rem) !important;
+                text-align: center !important;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stat-cards,
+            .stat-cards.stat-cards--compact,
+            .stat-cards.stat-cards--wide,
+            .stat-cards.stat-cards--quad {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 10px !important;
+            }
+
+            .stat-card {
+                padding: 10px 12px !important;
+            }
+
+            .stat-card h4 {
+                font-size: clamp(0.65rem, 4vw, 0.8rem) !important;
+                margin: 0 0 5px !important;
+            }
+
+            .stat-card .value {
+                font-size: clamp(1.1rem, 6vw, 1.5rem) !important;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="app-shell" data-role="admin">
