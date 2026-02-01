@@ -71,6 +71,17 @@
             }
         }
     </style>
+    <script>
+        // UNREGISTER OLD SERVICE WORKERS - CRITICAL FIX FOR CACHING ISSUE
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for(let registration of registrations) {
+                    registration.unregister();
+                    console.log('Service Worker unregistered:', registration);
+                }
+            });
+        }
+    </script>
 </head>
 <body>
     <div class="app-shell" data-role="manager">
