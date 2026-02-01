@@ -3989,7 +3989,7 @@ async function processApproval(record, approve = true) {
                 let message;
                 if (record.type === 'case') {
                     const doctorName = payload.doctor_name || 'Unknown';
-                    message = `Case request approved by operator Dr. "${doctorName}"`;
+                    message = `Case request of operator Dr. "${doctorName}" approved`;
                 } else {
                     message = `${entityLabel} request approved: ${record.name}`;
                 }
@@ -6288,10 +6288,6 @@ function renderDoctorStats(doctors = state.doctors) {
     const pending = doctors.filter(
         (doctor) => doctor.status === APPROVAL_STATUS.PENDING_MANAGER || doctor.status === APPROVAL_STATUS.PENDING_ADMIN
     ).length;
-    const specialistNames = approvedDoctors
-        .flatMap((doctor) => [doctor.owner_name, doctor.secondary_owner_name, doctor.tertiary_owner_name, doctor.quaternary_owner_name, doctor.quinary_owner_name])
-        .filter(Boolean);
-    const specialists = distinct(specialistNames).length;
 
     container.innerHTML = `
         <div class="stat-card">
@@ -6301,10 +6297,6 @@ function renderDoctorStats(doctors = state.doctors) {
         <div class="stat-card">
             <h4>Pending</h4>
             <div class="value">${formatNumber(pending)}</div>
-        </div>
-        <div class="stat-card">
-            <h4>Product Specialists</h4>
-            <div class="value">${formatNumber(specialists)}</div>
         </div>
     `;
 }

@@ -3313,18 +3313,6 @@ function renderDoctorStats(doctors = state.doctors) {
     const pending = doctors.filter(
         (doctor) => doctor.status === APPROVAL_STATUS.PENDING_MANAGER || doctor.status === APPROVAL_STATUS.PENDING_ADMIN
     ).length;
-    const specialists = approvedDoctors.length
-        ? distinct(
-              approvedDoctors
-                  .flatMap((doctor) => [
-                      doctor.owner_employee_id,
-                      doctor.secondary_employee_id,
-                      doctor.tertiary_employee_id
-                  ])
-                  .filter(Boolean)
-                  .map((id) => String(id))
-          ).length
-        : 0;
 
     container.innerHTML = `
         <div class="stat-card">
@@ -3334,10 +3322,6 @@ function renderDoctorStats(doctors = state.doctors) {
         <div class="stat-card">
             <h4>Pending</h4>
             <div class="value">${formatNumber(pending)}</div>
-        </div>
-        <div class="stat-card">
-            <h4>Product Specialists</h4>
-            <div class="value">${formatNumber(specialists)}</div>
         </div>
     `;
 }

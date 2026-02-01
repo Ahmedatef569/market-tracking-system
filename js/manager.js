@@ -1652,18 +1652,6 @@ function renderTeamDoctorStats(doctors) {
     const pending = doctors.filter(
         (doctor) => doctor.status === APPROVAL_STATUS.PENDING_MANAGER || doctor.status === APPROVAL_STATUS.PENDING_ADMIN
     ).length;
-    const specialistCount = distinct(
-        approvedDoctors
-            .flatMap((doctor) => [
-                doctor.owner_employee_id,
-                doctor.secondary_employee_id,
-                doctor.tertiary_employee_id,
-                doctor.quaternary_employee_id,
-                doctor.quinary_employee_id
-            ])
-            .filter(Boolean)
-            .map((id) => String(id))
-    ).length;
 
     container.innerHTML = `
         <div class="stat-card">
@@ -1673,10 +1661,6 @@ function renderTeamDoctorStats(doctors) {
         <div class="stat-card">
             <h4>Pending</h4>
             <div class="value">${formatNumber(pending)}</div>
-        </div>
-        <div class="stat-card">
-            <h4>Product Specialists</h4>
-            <div class="value">${formatNumber(specialistCount)}</div>
         </div>
     `;
 }
@@ -3312,7 +3296,7 @@ async function handleTeamApproval(record, approve = true) {
                 let message;
                 if (record.type === 'case') {
                     const doctorName = record.payload?.doctor_name || 'Unknown';
-                    message = `Case request approved by operator Dr. "${doctorName}"`;
+                    message = `Case request of operator Dr. "${doctorName}" approved`;
                 } else {
                     message = `${entityLabel} request approved by manager`;
                 }
