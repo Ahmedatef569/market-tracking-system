@@ -2066,8 +2066,33 @@ body[data-theme='light'] .case-review table.table tbody tr:nth-child(odd) {
         padding: 24px;
     }
 
-    .stat-cards {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* Stat cards mobile styling - 2 columns with compact design */
+    .stat-cards,
+    .stat-cards.stat-cards--compact,
+    .stat-cards.stat-cards--wide,
+    .stat-cards.stat-cards--quad {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 12px !important;
+    }
+
+    .stat-card {
+        padding: 12px 14px !important;
+        text-align: center !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+        align-items: center !important;
+    }
+
+    .stat-card h4 {
+        font-size: clamp(0.7rem, 3.5vw, 0.85rem) !important;
+        margin: 0 0 6px !important;
+        text-align: center !important;
+    }
+
+    .stat-card .value {
+        font-size: clamp(1.2rem, 5vw, 1.6rem) !important;
+        text-align: center !important;
     }
 
     /* Single column filters on very small screens */
@@ -2115,30 +2140,6 @@ body[data-theme='light'] .case-review table.table tbody tr:nth-child(odd) {
     .stat-cards.stat-cards--wide,
     .stat-cards.stat-cards--quad {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
-}
-
-/* Standard mobile breakpoint - tablets and phones */
-@media (max-width: 768px) {
-    .stat-cards,
-    .stat-cards.stat-cards--compact,
-    .stat-cards.stat-cards--wide,
-    .stat-cards.stat-cards--quad {
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        gap: 12px !important;
-    }
-
-    .stat-card {
-        padding: 12px 14px !important;
-    }
-
-    .stat-card h4 {
-        font-size: clamp(0.7rem, 3.5vw, 0.85rem) !important;
-        margin: 0 0 6px !important;
-    }
-
-    .stat-card .value {
-        font-size: clamp(1.2rem, 5vw, 1.6rem) !important;
     }
 }
 
