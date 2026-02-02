@@ -772,7 +772,6 @@ a:hover {
     height: 100% !important;
 }
 
-/* ORIGINAL STAT CARD STYLES - BACKUP FOR RESTORATION IF NEEDED
 .stat-cards {
     display: grid;
     gap: 20px;
@@ -793,6 +792,7 @@ a:hover {
     border: 1px solid rgba(148, 163, 184, 0.15);
     box-shadow: var(--card-shadow);
     min-width: 0;
+    text-align: center;
 }
 
 .stat-card h4 {
@@ -800,57 +800,11 @@ a:hover {
     font-size: 0.95rem;
     font-weight: 500;
     color: rgba(226, 232, 240, 0.88);
+    text-align: center;
 }
 
 .stat-card .value {
     font-size: 2rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-}
-END OF ORIGINAL STYLES */
-
-/* NEW COMPACT CENTERED STAT CARD STYLES */
-.stat-cards {
-    display: grid;
-    gap: 16px;
-    margin-bottom: 30px;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.stat-cards.stat-cards--compact,
-.stat-cards.stat-cards--wide,
-.stat-cards.stat-cards--quad {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.stat-card {
-    padding: 14px 16px;
-    border-radius: 18px;
-    background: linear-gradient(135deg, rgba(67,56,202,0.35), rgba(14,165,233,0.28));
-    border: 1px solid rgba(148, 163, 184, 0.15);
-    box-shadow: var(--card-shadow);
-    min-width: 0;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-}
-
-.stat-card h4 {
-    margin: 0 0 8px;
-    font-size: clamp(0.75rem, 1.8vw, 0.9rem);
-    font-weight: 500;
-    color: rgba(226, 232, 240, 0.88);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    width: 100%;
-    text-align: center;
-}
-
-.stat-card .value {
-    font-size: clamp(1.3rem, 3vw, 1.75rem);
     font-weight: 700;
     letter-spacing: -0.01em;
     text-align: center;
@@ -1470,17 +1424,14 @@ body[data-theme='light'] .stat-card {
     background: linear-gradient(135deg, rgba(67,56,202,0.85), rgba(14,165,233,0.75));
     border: 1px solid rgba(67,56,202,0.3);
     color: #ffffff;
-    text-align: center;
 }
 
 body[data-theme='light'] .stat-card h4 {
     color: rgba(255, 255, 255, 0.9);
-    text-align: center;
 }
 
 body[data-theme='light'] .stat-card .value {
     color: #ffffff;
-    text-align: center;
 }
 
 body[data-theme='light'] .filters-panel {
@@ -2067,7 +2018,7 @@ body[data-theme='light'] .case-review table.table tbody tr:nth-child(odd) {
     }
 
     .stat-cards {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     }
 
     /* Single column filters on very small screens */
@@ -2101,7 +2052,6 @@ body[data-theme='light'] .case-review table.table tbody tr:nth-child(odd) {
 }
 
 @media (max-width: 1200px) {
-    .stat-cards,
     .stat-cards.stat-cards--compact,
     .stat-cards.stat-cards--wide,
     .stat-cards.stat-cards--quad {
@@ -2110,7 +2060,6 @@ body[data-theme='light'] .case-review table.table tbody tr:nth-child(odd) {
 }
 
 @media (max-width: 900px) {
-    .stat-cards,
     .stat-cards.stat-cards--compact,
     .stat-cards.stat-cards--wide,
     .stat-cards.stat-cards--quad {
@@ -2119,11 +2068,10 @@ body[data-theme='light'] .case-review table.table tbody tr:nth-child(odd) {
 }
 
 @media (max-width: 600px) {
-    .stat-cards,
     .stat-cards.stat-cards--compact,
     .stat-cards.stat-cards--wide,
     .stat-cards.stat-cards--quad {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(1, minmax(0, 1fr));
     }
 }
 
