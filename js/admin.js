@@ -3665,7 +3665,26 @@ function renderCaseStats(cases) {
 
             // Calculate metrics for each selection
             const companyMetrics = computeCaseMetrics(companyCases, state.caseProductsByCase);
-            const competitorMetrics = computeCaseMetrics(competitorCases, state.caseProductsByCase);
+
+            // FIX: When filtering by specific competitor company, calculate units from individual products
+            let competitorMetrics;
+            if (hasCompetitorFilters && competitorCompany) {
+                // Calculate competitor units from individual products matching the filter
+                let competitorUnitsFromProducts = 0;
+                competitorCases.forEach(caseItem => {
+                    const products = state.caseProductsByCase.get(caseItem.id) || [];
+                    products.forEach(product => {
+                        if (!product.is_company_product && (product.company_name || '') === competitorCompany) {
+                            competitorUnitsFromProducts += product.units || 0;
+                        }
+                    });
+                });
+
+                competitorMetrics = computeCaseMetrics(competitorCases, state.caseProductsByCase);
+                competitorMetrics.competitorUnits = competitorUnitsFromProducts;
+            } else {
+                competitorMetrics = computeCaseMetrics(competitorCases, state.caseProductsByCase);
+            }
 
             // Calculate mixed cases between Row 1 and Row 2 selections specifically
             let mixedCaseCount = 0;
@@ -4805,7 +4824,26 @@ function getDualRowMetrics(cases, caseProductsMap) {
 
             // Calculate metrics for each selection
             const companyMetrics = computeCaseMetrics(companyCases, caseProductsMap);
-            const competitorMetrics = computeCaseMetrics(competitorCases, caseProductsMap);
+
+            // FIX: When filtering by specific competitor company, calculate units from individual products
+            let competitorMetrics;
+            if (hasCompetitorFilters && competitorCompany) {
+                // Calculate competitor units from individual products matching the filter
+                let competitorUnitsFromProducts = 0;
+                competitorCases.forEach(caseItem => {
+                    const products = caseProductsMap.get(caseItem.id) || [];
+                    products.forEach(product => {
+                        if (!product.is_company_product && (product.company_name || '') === competitorCompany) {
+                            competitorUnitsFromProducts += product.units || 0;
+                        }
+                    });
+                });
+
+                competitorMetrics = computeCaseMetrics(competitorCases, caseProductsMap);
+                competitorMetrics.competitorUnits = competitorUnitsFromProducts;
+            } else {
+                competitorMetrics = computeCaseMetrics(competitorCases, caseProductsMap);
+            }
 
             // Calculate mixed cases between Row 1 and Row 2 selections specifically
             let mixedCaseCount = 0;
@@ -5302,7 +5340,27 @@ function renderUnitsMarketShareChart(cases, caseProductsMap) {
     if (hasCompanyFilters && hasCompetitorFilters) {
         // Both rows have filters - show company units vs competitor units
         const companyUnits = companyCases.reduce((sum, c) => sum + (c.total_company_units || 0), 0);
-        const competitorUnits = competitorCases.reduce((sum, c) => sum + (c.total_competitor_units || 0), 0);
+
+        // FIX: Get the competitor company filter to calculate units correctly
+        const competitorCompany = document.getElementById('dashboard-filter-competitor-company')?.value || '';
+
+        let competitorUnits;
+        if (competitorCompany) {
+            // Calculate units from individual products matching the competitor company
+            competitorUnits = 0;
+            competitorCases.forEach(caseItem => {
+                const products = caseProductsMap.get(caseItem.id) || [];
+                products.forEach(product => {
+                    if (!product.is_company_product && (product.company_name || '') === competitorCompany) {
+                        competitorUnits += product.units || 0;
+                    }
+                });
+            });
+        } else {
+            // No specific company filter - use case totals
+            competitorUnits = competitorCases.reduce((sum, c) => sum + (c.total_competitor_units || 0), 0);
+        }
+
         labels = ['Company', 'Competitor'];
         data = [companyUnits, competitorUnits];
     } else if (hasCompanyFilters) {
@@ -5312,7 +5370,26 @@ function renderUnitsMarketShareChart(cases, caseProductsMap) {
         data = [companyUnits];
     } else if (hasCompetitorFilters) {
         // Only competitor row has filters - show competitor units
-        const competitorUnits = competitorCases.reduce((sum, c) => sum + (c.total_competitor_units || 0), 0);
+        // FIX: Get the competitor company filter to calculate units correctly
+        const competitorCompany = document.getElementById('dashboard-filter-competitor-company')?.value || '';
+
+        let competitorUnits;
+        if (competitorCompany) {
+            // Calculate units from individual products matching the competitor company
+            competitorUnits = 0;
+            competitorCases.forEach(caseItem => {
+                const products = caseProductsMap.get(caseItem.id) || [];
+                products.forEach(product => {
+                    if (!product.is_company_product && (product.company_name || '') === competitorCompany) {
+                        competitorUnits += product.units || 0;
+                    }
+                });
+            });
+        } else {
+            // No specific company filter - use case totals
+            competitorUnits = competitorCases.reduce((sum, c) => sum + (c.total_competitor_units || 0), 0);
+        }
+
         labels = ['Competitor'];
         data = [competitorUnits];
     } else {
@@ -5401,7 +5478,7 @@ function renderUnitsPerCompanyChart(cases, caseProductsMap) {
         filteredCases = cases.filter(c => caseIds.has(c.id));
     }
 
-    const { labels, datasets } = calculateUnitsPerCompanyStacked(filteredCases, caseProductsMap);
+    const { labels, fullLabels, datasets } = calculateUnitsPerCompanyStacked(filteredCases, caseProductsMap);
 
     destroyChart(state.charts.unitsPerCompany);
     state.charts.unitsPerCompany = buildBarChart(canvas, {
@@ -5409,7 +5486,25 @@ function renderUnitsPerCompanyChart(cases, caseProductsMap) {
         datasets,
         stacked: true,
         options: {
-            plugins: { legend: { position: 'bottom' } }
+            plugins: {
+                legend: {
+                    display: false // Hide legend to increase chart area
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(context) {
+                            // Show full sub-category name in tooltip
+                            const index = context[0].dataIndex;
+                            return fullLabels[index] || context[0].label;
+                        },
+                        label: function(context) {
+                            const companyName = context.dataset.label;
+                            const units = context.parsed.y;
+                            return `${companyName}: ${units} units`;
+                        }
+                    }
+                }
+            }
         }
     });
 }

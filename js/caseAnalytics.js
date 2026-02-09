@@ -1052,7 +1052,7 @@ export function aggregateUnitsByMonthDual(cases = []) {
 }
 
 /**
- * Calculate cases market share: company vs top 10 competitors vs others
+ * Calculate cases market share: company vs top 5 competitors vs others
  * MATCHES STAT CARD LOGIC: Company cases = all cases with ANY company product
  * Competitor cases = all cases with ANY competitor product (counted per company)
  */
@@ -1080,7 +1080,7 @@ export function calculateCasesMarketShare(cases = [], caseProductsMap = new Map(
 
     const sorted = Array.from(competitorCounts.entries())
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
+        .slice(0, 5);
 
     const labels = ['Company', ...sorted.map(([name]) => name)];
     const data = [companyCount.size, ...sorted.map(([, count]) => count)];
@@ -1097,9 +1097,9 @@ export function calculateCasesMarketShare(cases = [], caseProductsMap = new Map(
 }
 
 /**
- * Calculate units market share: company vs top 10 competitors vs others
- * MATCHES STAT CARD LOGIC: Uses total_company_units and total_competitor_units from cases
- * NOT from individual product units
+ * Calculate units market share: company vs top 5 competitors vs others
+ * MATCHES STAT CARD LOGIC: Uses actual product units per company
+ * FIX: Calculate units per competitor company from individual products, not case totals
  */
 export function calculateUnitsMarketShare(cases = [], caseProductsMap = new Map()) {
     let companyUnits = 0;
@@ -1111,21 +1111,20 @@ export function calculateUnitsMarketShare(cases = [], caseProductsMap = new Map(
         // Add company units from case total
         companyUnits += caseItem.total_company_units || 0;
 
-        // Get unique competitor companies and their units from this case
-        const competitors = new Set(
-            products.filter(p => !p.is_company_product).map(p => p.company_name).filter(Boolean)
-        );
-
-        // Distribute competitor units equally among companies in this case
-        // OR count the case's total_competitor_units per company
-        competitors.forEach(comp => {
-            competitorUnits.set(comp, (competitorUnits.get(comp) || 0) + (caseItem.total_competitor_units || 0));
+        // Calculate units per competitor company from individual products
+        // This prevents double-counting when a case has multiple competitor companies
+        products.forEach(product => {
+            if (!product.is_company_product && product.company_name) {
+                const companyName = product.company_name;
+                const units = product.units || 0;
+                competitorUnits.set(companyName, (competitorUnits.get(companyName) || 0) + units);
+            }
         });
     });
 
     const sorted = Array.from(competitorUnits.entries())
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
+        .slice(0, 5);
 
     const labels = ['Company', ...sorted.map(([name]) => name)];
     const data = [companyUnits, ...sorted.map(([, units]) => units)];
@@ -1186,7 +1185,24 @@ export function calculateUnitsPerCategory(caseProducts = []) {
 }
 
 /**
+ * Helper function to truncate sub-category labels to "FirstWord...LastWord"
+ * Example: "short self expanding stents" -> "short...stents"
+ */
+export function truncateSubCategoryLabel(label) {
+    if (!label || typeof label !== 'string') return label;
+
+    const words = label.trim().split(/\s+/);
+
+    // If 2 words or less, return as is
+    if (words.length <= 2) return label;
+
+    // Return "FirstWord...LastWord"
+    return `${words[0]}...${words[words.length - 1]}`;
+}
+
+/**
  * Calculate units per company (stacked by top 10 competitors + company + others)
+ * Returns both truncated labels for display and full labels for tooltips
  */
 export function calculateUnitsPerCompanyStacked(cases = [], caseProductsMap = new Map()) {
     const categoryCompanyMap = new Map(); // category -> {company -> units}
@@ -1267,8 +1283,12 @@ export function calculateUnitsPerCompanyStacked(cases = [], caseProductsMap = ne
         });
     }
 
+    // Create truncated labels for display
+    const truncatedLabels = categories.map(cat => truncateSubCategoryLabel(cat));
+
     return {
-        labels: categories,
+        labels: truncatedLabels,
+        fullLabels: categories, // Keep full labels for tooltips
         datasets
     };
 }

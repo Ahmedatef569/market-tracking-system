@@ -5844,7 +5844,7 @@ function renderUnitsPerCompanyChart(cases, caseProductsMap) {
         filteredCases = cases.filter(c => validCaseIds.has(c.id));
     }
 
-    const { labels, datasets } = calculateUnitsPerCompanyStacked(filteredCases, caseProductsMap);
+    const { labels, fullLabels, datasets } = calculateUnitsPerCompanyStacked(filteredCases, caseProductsMap);
 
     destroyChart(state.charts.unitsPerCompany);
     state.charts.unitsPerCompany = buildBarChart(canvas, {
@@ -5852,7 +5852,25 @@ function renderUnitsPerCompanyChart(cases, caseProductsMap) {
         datasets,
         stacked: true,
         options: {
-            plugins: { legend: { position: 'bottom' } }
+            plugins: {
+                legend: {
+                    display: false // Hide legend to increase chart area
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(context) {
+                            // Show full sub-category name in tooltip
+                            const index = context[0].dataIndex;
+                            return fullLabels[index] || context[0].label;
+                        },
+                        label: function(context) {
+                            const companyName = context.dataset.label;
+                            const units = context.parsed.y;
+                            return `${companyName}: ${units} units`;
+                        }
+                    }
+                }
+            }
         }
     });
 }
