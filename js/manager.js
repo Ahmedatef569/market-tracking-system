@@ -1185,19 +1185,36 @@ async function loadTeamCases() {
     const allProducts = [];
     if (state.teamCases.length > 0) {
         const caseIds = state.teamCases.map(c => c.id);
-        const BATCH_SIZE = 500; // Supabase .in() limit is ~1000, use 500 to be safe
+        const CASE_ID_BATCH_SIZE = 500; // Supabase .in() limit is ~1000, use 500 to be safe
+        const PRODUCT_BATCH_SIZE = 1000;
 
-        for (let i = 0; i < caseIds.length; i += BATCH_SIZE) {
-            const batchIds = caseIds.slice(i, i + BATCH_SIZE);
-            const products = await handleSupabase(
-                supabase
-                    .from('case_products')
-                    .select('case_id, product_id, product_name, company_name, category, sub_category, is_company_product, units, sequence')
-                    .in('case_id', batchIds),
-                `load team case products batch ${Math.floor(i / BATCH_SIZE) + 1}`
-            );
-            if (products && products.length > 0) {
-                allProducts.push(...products);
+        for (let i = 0; i < caseIds.length; i += CASE_ID_BATCH_SIZE) {
+            const batchIds = caseIds.slice(i, i + CASE_ID_BATCH_SIZE);
+
+            // For each batch of case IDs, load ALL products using .range() pagination
+            // IMPORTANT: Reset offset for each new batch of case IDs!
+            let offset = 0;
+            let hasMore = true;
+
+            while (hasMore) {
+                const products = await handleSupabase(
+                    supabase
+                        .from('case_products')
+                        .select('case_id, product_id, product_name, company_name, category, sub_category, is_company_product, units, sequence')
+                        .in('case_id', batchIds)
+                        .order('case_id', { ascending: true })
+                        .order('sequence', { ascending: true })
+                        .range(offset, offset + PRODUCT_BATCH_SIZE - 1),
+                    `load team case products for case batch ${Math.floor(i / CASE_ID_BATCH_SIZE) + 1}, product page ${offset / PRODUCT_BATCH_SIZE + 1}`
+                );
+
+                if (products && products.length > 0) {
+                    allProducts.push(...products);
+                    offset += PRODUCT_BATCH_SIZE;
+                    hasMore = products.length === PRODUCT_BATCH_SIZE;
+                } else {
+                    hasMore = false;
+                }
             }
         }
     }
@@ -1210,6 +1227,8 @@ async function loadTeamCases() {
     console.log('  - Team cases loaded:', state.teamCases.length);
     console.log('  - Team case products loaded:', state.teamCaseProducts.length);
     console.log('  - Team case products map size:', state.teamCaseProductsByCase.size);
+    console.log('  - Unique case IDs in products:', new Set(state.teamCaseProducts.map(p => p.case_id)).size);
+    console.log('  - Cases without products:', state.teamCases.filter(c => !state.teamCaseProductsByCase.has(c.id)).length);
 }
 
 async function loadMyCases() {
@@ -2051,8 +2070,60 @@ function renderTeamCaseStats(cases = []) {
             }
 
             // Calculate metrics for each selection
-            const companyMetrics = computeCaseMetrics(companyCases, state.teamCaseProductsByCase);
-            const competitorMetrics = computeCaseMetrics(competitorCases, state.teamCaseProductsByCase);
+            let companyMetrics;
+            if (hasCompanyFilters) {
+                // Calculate company units from individual products matching ALL company filters
+                let companyUnitsFromProducts = 0;
+                let companyCaseCount = 0;
+                companyCases.forEach(caseItem => {
+                    const products = state.teamCaseProductsByCase.get(caseItem.id) || [];
+                    const matchingProducts = products.filter(product => {
+                        if (!product.is_company_product) return false;
+                        if (companyCompany && (product.company_name || '') !== companyCompany) return false;
+                        if (companyCategory && (product.category || '') !== companyCategory) return false;
+                        if (companySubCategory && (product.sub_category || '') !== companySubCategory) return false;
+                        if (companyProduct && String(product.product_id) !== companyProduct && product.product_name !== companyProduct) return false;
+                        return true;
+                    });
+                    if (matchingProducts.length > 0) {
+                        companyCaseCount++;
+                        matchingProducts.forEach(p => companyUnitsFromProducts += p.units || 0);
+                    }
+                });
+                companyMetrics = computeCaseMetrics(companyCases, state.teamCaseProductsByCase);
+                companyMetrics.companyUnits = companyUnitsFromProducts;
+                companyMetrics.companyCaseCount = companyCaseCount;
+            } else {
+                companyMetrics = computeCaseMetrics(companyCases, state.teamCaseProductsByCase);
+            }
+
+            // FIX: When filtering by ANY competitor filter, calculate units from individual products
+            let competitorMetrics;
+            if (hasCompetitorFilters) {
+                // Calculate competitor units from individual products matching ALL competitor filters
+                let competitorUnitsFromProducts = 0;
+                let competitorCaseCount = 0;
+                competitorCases.forEach(caseItem => {
+                    const products = state.teamCaseProductsByCase.get(caseItem.id) || [];
+                    const matchingProducts = products.filter(product => {
+                        if (product.is_company_product) return false;
+                        if (competitorCompany && (product.company_name || '') !== competitorCompany) return false;
+                        if (competitorCategory && (product.category || '') !== competitorCategory) return false;
+                        if (competitorSubCategory && (product.sub_category || '') !== competitorSubCategory) return false;
+                        if (competitorProduct && String(product.product_id) !== competitorProduct && product.product_name !== competitorProduct) return false;
+                        return true;
+                    });
+                    if (matchingProducts.length > 0) {
+                        competitorCaseCount++;
+                        matchingProducts.forEach(p => competitorUnitsFromProducts += p.units || 0);
+                    }
+                });
+                competitorMetrics = computeCaseMetrics(competitorCases, state.teamCaseProductsByCase);
+                competitorMetrics.competitorUnits = competitorUnitsFromProducts;
+                competitorMetrics.competitorCaseCount = competitorCaseCount;
+            } else {
+                competitorMetrics = computeCaseMetrics(competitorCases, state.teamCaseProductsByCase);
+            }
 
             // Calculate mixed cases between Row 2 and Row 3 selections specifically
             let mixedCaseCount = 0;
@@ -5244,8 +5315,60 @@ function getDualRowMetrics(cases, caseProductsMap) {
             }
 
             // Calculate metrics for each selection
-            const companyMetrics = computeCaseMetrics(companyCases, caseProductsMap);
-            const competitorMetrics = computeCaseMetrics(competitorCases, caseProductsMap);
+            let companyMetrics;
+            if (hasCompanyFilters) {
+                // Calculate company units from individual products matching ALL company filters
+                let companyUnitsFromProducts = 0;
+                let companyCaseCount = 0;
+                companyCases.forEach(caseItem => {
+                    const products = caseProductsMap.get(caseItem.id) || [];
+                    const matchingProducts = products.filter(product => {
+                        if (!product.is_company_product) return false;
+                        if (companyCompany && (product.company_name || '') !== companyCompany) return false;
+                        if (companyCategory && (product.category || '') !== companyCategory) return false;
+                        if (companySubCategory && (product.sub_category || '') !== companySubCategory) return false;
+                        if (companyProduct && String(product.product_id) !== companyProduct && product.product_name !== companyProduct) return false;
+                        return true;
+                    });
+                    if (matchingProducts.length > 0) {
+                        companyCaseCount++;
+                        matchingProducts.forEach(p => companyUnitsFromProducts += p.units || 0);
+                    }
+                });
+                companyMetrics = computeCaseMetrics(companyCases, caseProductsMap);
+                companyMetrics.companyUnits = companyUnitsFromProducts;
+                companyMetrics.companyCaseCount = companyCaseCount;
+            } else {
+                companyMetrics = computeCaseMetrics(companyCases, caseProductsMap);
+            }
+
+            // FIX: When filtering by ANY competitor filter, calculate units from individual products
+            let competitorMetrics;
+            if (hasCompetitorFilters) {
+                // Calculate competitor units from individual products matching ALL competitor filters
+                let competitorUnitsFromProducts = 0;
+                let competitorCaseCount = 0;
+                competitorCases.forEach(caseItem => {
+                    const products = caseProductsMap.get(caseItem.id) || [];
+                    const matchingProducts = products.filter(product => {
+                        if (product.is_company_product) return false;
+                        if (competitorCompany && (product.company_name || '') !== competitorCompany) return false;
+                        if (competitorCategory && (product.category || '') !== competitorCategory) return false;
+                        if (competitorSubCategory && (product.sub_category || '') !== competitorSubCategory) return false;
+                        if (competitorProduct && String(product.product_id) !== competitorProduct && product.product_name !== competitorProduct) return false;
+                        return true;
+                    });
+                    if (matchingProducts.length > 0) {
+                        competitorCaseCount++;
+                        matchingProducts.forEach(p => competitorUnitsFromProducts += p.units || 0);
+                    }
+                });
+                competitorMetrics = computeCaseMetrics(competitorCases, caseProductsMap);
+                competitorMetrics.competitorUnits = competitorUnitsFromProducts;
+                competitorMetrics.competitorCaseCount = competitorCaseCount;
+            } else {
+                competitorMetrics = computeCaseMetrics(competitorCases, caseProductsMap);
+            }
 
             // Calculate mixed cases between Row 1 and Row 2 selections specifically
             let mixedCaseCount = 0;
@@ -5745,20 +5868,50 @@ function renderUnitsMarketShareChart(cases, caseProductsMap) {
 
     // Get dual-row filter values
     const companyCompany = document.getElementById('manager-dashboard-filter-company-company')?.value || '';
+    const companyCategory = document.getElementById('manager-dashboard-filter-company-category')?.value || '';
+    const companySubCategory = document.getElementById('manager-dashboard-filter-company-sub-category')?.value || '';
+    const companyProduct = document.getElementById('manager-dashboard-filter-company-product')?.value || '';
     const competitorCompany = document.getElementById('manager-dashboard-filter-competitor-company')?.value || '';
-    const hasCompanyFilters = companyCompany || document.getElementById('manager-dashboard-filter-company-category')?.value ||
-                              document.getElementById('manager-dashboard-filter-company-sub-category')?.value ||
-                              document.getElementById('manager-dashboard-filter-company-product')?.value;
-    const hasCompetitorFilters = competitorCompany || document.getElementById('manager-dashboard-filter-competitor-category')?.value ||
-                                 document.getElementById('manager-dashboard-filter-competitor-sub-category')?.value ||
-                                 document.getElementById('manager-dashboard-filter-competitor-product')?.value;
+    const competitorCategory = document.getElementById('manager-dashboard-filter-competitor-category')?.value || '';
+    const competitorSubCategory = document.getElementById('manager-dashboard-filter-competitor-sub-category')?.value || '';
+    const competitorProduct = document.getElementById('manager-dashboard-filter-competitor-product')?.value || '';
+
+    const hasCompanyFilters = companyCompany || companyCategory || companySubCategory || companyProduct;
+    const hasCompetitorFilters = competitorCompany || competitorCategory || competitorSubCategory || competitorProduct;
 
     let labels, data;
     if (hasCompanyFilters && hasCompetitorFilters) {
         // Show company vs competitor when both filters active
         const { companyCases, competitorCases } = getDualRowCaseSets(cases, caseProductsMap);
-        const companyUnits = companyCases.reduce((sum, c) => sum + (c.total_company_units || 0), 0);
-        const competitorUnits = competitorCases.reduce((sum, c) => sum + (c.total_competitor_units || 0), 0);
+
+        // Calculate company units from matching products
+        let companyUnits = 0;
+        companyCases.forEach(caseItem => {
+            const products = caseProductsMap.get(caseItem.id) || [];
+            products.filter(product => {
+                if (!product.is_company_product) return false;
+                if (companyCompany && (product.company_name || '') !== companyCompany) return false;
+                if (companyCategory && (product.category || '') !== companyCategory) return false;
+                if (companySubCategory && (product.sub_category || '') !== companySubCategory) return false;
+                if (companyProduct && String(product.product_id) !== companyProduct && product.product_name !== companyProduct) return false;
+                return true;
+            }).forEach(p => companyUnits += p.units || 0);
+        });
+
+        // Calculate competitor units from matching products
+        let competitorUnits = 0;
+        competitorCases.forEach(caseItem => {
+            const products = caseProductsMap.get(caseItem.id) || [];
+            products.filter(product => {
+                if (product.is_company_product) return false;
+                if (competitorCompany && (product.company_name || '') !== competitorCompany) return false;
+                if (competitorCategory && (product.category || '') !== competitorCategory) return false;
+                if (competitorSubCategory && (product.sub_category || '') !== competitorSubCategory) return false;
+                if (competitorProduct && String(product.product_id) !== competitorProduct && product.product_name !== competitorProduct) return false;
+                return true;
+            }).forEach(p => competitorUnits += p.units || 0);
+        });
+
         labels = ['Company', 'Competitor'];
         data = [companyUnits, competitorUnits];
     } else if (hasCompanyFilters || hasCompetitorFilters) {
