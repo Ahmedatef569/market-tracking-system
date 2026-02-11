@@ -3503,8 +3503,9 @@ function getFilteredCases() {
         // Filter by line (employee's line) - skip cases without line
         if (!caseItem.employee_line_id) return false;
         if (line && caseItem.employee_line_id !== line) return false;
-        if (specialist && caseItem.submitted_by_id !== specialist) return false;
+        if (specialist && String(caseItem.submitted_by_id) !== String(specialist)) return false;
         if (accountType && caseItem.account_type !== accountType) return false;
+
         if (managerValue) {
             const submitter =
                 state.employeeById?.get(String(caseItem.submitted_by_id)) ||
@@ -3539,8 +3540,7 @@ function getFilteredCases() {
             }
         }
 
-        // NEW DUAL-ROW MULTI-SELECTION FILTER LOGIC:
-        // Case matches if it has products matching company row OR competitor row selections
+        // DUAL-ROW MULTI-SELECTION FILTER LOGIC (same as Dashboard)
         const hasCompanyFilters = companyCompany || companyCategory || companySubCategory || companyProduct;
         const hasCompetitorFilters = competitorCompany || competitorCategory || competitorSubCategory || competitorProduct;
 
@@ -3558,9 +3558,6 @@ function getFilteredCases() {
                     if (companyProduct && String(product.product_id) !== companyProduct && product.product_name !== companyProduct) return false;
                     return true;
                 });
-            } else {
-                // No company filters = include all company products
-                matchesCompanySelection = products.some(product => product.is_company_product);
             }
 
             // Check competitor row filters
@@ -3573,13 +3570,14 @@ function getFilteredCases() {
                     if (competitorProduct && String(product.product_id) !== competitorProduct && product.product_name !== competitorProduct) return false;
                     return true;
                 });
-            } else {
-                // No competitor filters = include all competitor products
-                matchesCompetitorSelection = products.some(product => !product.is_company_product);
             }
 
-            // Case must match company selection OR competitor selection
-            if (!matchesCompanySelection && !matchesCompetitorSelection) {
+            // OR logic: case must match at least one row that has filters
+            if (hasCompanyFilters && hasCompetitorFilters) {
+                if (!matchesCompanySelection && !matchesCompetitorSelection) return false;
+            } else if (hasCompanyFilters && !matchesCompanySelection) {
+                return false;
+            } else if (hasCompetitorFilters && !matchesCompetitorSelection) {
                 return false;
             }
         }
@@ -3633,10 +3631,10 @@ function renderCaseStats(cases) {
         const hasCompetitorFilters = competitorCompany || competitorCategory || competitorSubCategory || competitorProduct;
 
         if (hasCompanyFilters || hasCompetitorFilters) {
-            // Filter cases for company stats (Row 1 selections)
-            let companyCases = state.cases;
+            // Filter cases for company stats (Row 1 selections only)
+            let companyCases = cases;
             if (hasCompanyFilters) {
-                companyCases = state.cases.filter(caseItem => {
+                companyCases = cases.filter(caseItem => {
                     const products = state.caseProductsByCase.get(caseItem.id) || [];
                     return products.some(product => {
                         if (!product.is_company_product) return false;
@@ -3649,10 +3647,10 @@ function renderCaseStats(cases) {
                 });
             }
 
-            // Filter cases for competitor stats (Row 2 selections)
-            let competitorCases = state.cases;
+            // Filter cases for competitor stats (Row 2 selections only)
+            let competitorCases = cases;
             if (hasCompetitorFilters) {
-                competitorCases = state.cases.filter(caseItem => {
+                competitorCases = cases.filter(caseItem => {
                     const products = state.caseProductsByCase.get(caseItem.id) || [];
                     return products.some(product => {
                         if (product.is_company_product) return false;

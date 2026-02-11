@@ -311,9 +311,10 @@ function setupDashboardFilters() {
     const container = document.getElementById('manager-dashboard-filters');
     if (!container) return;
 
-    // Save previous selections for dual-row filters
+    // Save previous selections
     const previousSelections = {
-        status: container.querySelector('#manager-dashboard-filter-status')?.value || '',
+        specialist: container.querySelector('#manager-dashboard-filter-specialist')?.value || '',
+        manager: container.querySelector('#manager-dashboard-filter-manager')?.value || '',
         accountType: container.querySelector('#manager-dashboard-filter-account-type')?.value || '',
         companyType: container.querySelector('#manager-dashboard-filter-company-type')?.value || '',
 
@@ -330,18 +331,40 @@ function setupDashboardFilters() {
 
         month: container.querySelector('#manager-dashboard-filter-month')?.value || '',
         from: container.querySelector('#manager-dashboard-filter-from')?.value || '',
-        to: container.querySelector('#manager-dashboard-filter-to')?.value || ''
+        to: container.querySelector('#manager-dashboard-filter-to')?.value || '',
+
+        // Text search filters
+        doctorName: container.querySelector('#manager-dashboard-filter-doctor-name')?.value || '',
+        accountName: container.querySelector('#manager-dashboard-filter-account-name')?.value || ''
     };
+
+    // Build specialist and manager options (same as Team Cases)
+    const specialistOptions = state.specialists
+        .map((member) => {
+            const label = `${member.first_name} ${member.last_name}`.trim() || member.code || 'Specialist';
+            return `<option value="${member.id}">${label}</option>`;
+        })
+        .join('');
+
+    const managerOptions = state.teamMembers
+        .filter((member) => member.role === ROLES.MANAGER)
+        .map((member) => {
+            const label = `${member.first_name} ${member.last_name}`.trim() || member.code || 'Manager';
+            return `<option value="${member.id}">${label}</option>`;
+        })
+        .join('');
 
     const { company, competitor } = collectDualRowFilterOptions(state.teamCaseProducts, state.products);
 
     container.innerHTML = `
         <div class="filters-row">
-            <select class="form-select" id="manager-dashboard-filter-status">
-                <option value="">All Status</option>
-                ${Object.values(APPROVAL_STATUS)
-                    .map((status) => `<option value="${status}">${status.replace('_', ' ')}</option>`)
-                    .join('')}
+            <select class="form-select" id="manager-dashboard-filter-specialist">
+                <option value="">All Specialists</option>
+                ${specialistOptions}
+            </select>
+            <select class="form-select" id="manager-dashboard-filter-manager">
+                <option value="">All Managers</option>
+                ${managerOptions}
             </select>
             <select class="form-select" id="manager-dashboard-filter-account-type">
                 <option value="">All Account Types</option>
@@ -352,7 +375,6 @@ function setupDashboardFilters() {
                 <option value="company">Company</option>
                 <option value="competitor">Competitor</option>
             </select>
-            <div style="grid-column: span 1;"></div>
         </div>
 
         <!-- Company Filters Row -->
@@ -395,6 +417,7 @@ function setupDashboardFilters() {
             </select>
         </div>
 
+        <!-- Date Filters Row -->
         <div class="filters-row">
             <select class="form-select" id="manager-dashboard-filter-month">
                 <option value="">Any Month</option>
@@ -406,6 +429,19 @@ function setupDashboardFilters() {
             </select>
             <input type="date" class="form-control" id="manager-dashboard-filter-from" placeholder="From Date">
             <input type="date" class="form-control" id="manager-dashboard-filter-to" placeholder="To Date">
+            <div></div>
+        </div>
+
+        <!-- Doctor and Account Name Filters Row -->
+        <div class="filters-row" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
+            <input type="text" class="form-control" id="manager-dashboard-filter-doctor-name" placeholder="Search Doctor Name...">
+            <input type="text" class="form-control" id="manager-dashboard-filter-account-name" placeholder="Search Account Name...">
+            <div></div>
+            <div></div>
+        </div>
+
+        <!-- Reset and Export Buttons Row -->
+        <div class="filters-row" style="grid-template-columns: 1fr;">
             <div class="filters-actions" style="justify-self: end;">
                 <button class="btn btn-outline-ghost" id="manager-dashboard-filter-reset">Reset</button>
                 <button class="btn btn-outline-ghost" id="manager-dashboard-export"><i class="bi bi-download me-2"></i>Export</button>
@@ -427,7 +463,8 @@ function setupDashboardFilters() {
         select.value = hasValue ? value : '';
     };
 
-    setSelectValue('#manager-dashboard-filter-status', previousSelections.status);
+    setSelectValue('#manager-dashboard-filter-specialist', previousSelections.specialist);
+    setSelectValue('#manager-dashboard-filter-manager', previousSelections.manager);
     setSelectValue('#manager-dashboard-filter-account-type', previousSelections.accountType);
     setSelectValue('#manager-dashboard-filter-company-type', previousSelections.companyType);
 
@@ -448,6 +485,12 @@ function setupDashboardFilters() {
     if (fromInput) fromInput.value = previousSelections.from || '';
     const toInput = container.querySelector('#manager-dashboard-filter-to');
     if (toInput) toInput.value = previousSelections.to || '';
+
+    // Restore text search filters
+    const doctorNameInput = container.querySelector('#manager-dashboard-filter-doctor-name');
+    if (doctorNameInput) doctorNameInput.value = previousSelections.doctorName || '';
+    const accountNameInput = container.querySelector('#manager-dashboard-filter-account-name');
+    if (accountNameInput) accountNameInput.value = previousSelections.accountName || '';
 
     // Setup dual-row cascading filters (EXACT COPY FROM ADMIN)
     const setupDualRowFilters = () => {
@@ -629,12 +672,17 @@ function setupDashboardFilters() {
     };
 
     // Setup event listeners for non-cascading filters
-    container.querySelector('#manager-dashboard-filter-status')?.addEventListener('change', handleFiltersChange);
+    container.querySelector('#manager-dashboard-filter-specialist')?.addEventListener('change', handleFiltersChange);
+    container.querySelector('#manager-dashboard-filter-manager')?.addEventListener('change', handleFiltersChange);
     container.querySelector('#manager-dashboard-filter-account-type')?.addEventListener('change', handleFiltersChange);
     container.querySelector('#manager-dashboard-filter-company-type')?.addEventListener('change', handleFiltersChange);
     container.querySelector('#manager-dashboard-filter-month')?.addEventListener('change', handleFiltersChange);
     container.querySelector('#manager-dashboard-filter-from')?.addEventListener('change', handleFiltersChange);
     container.querySelector('#manager-dashboard-filter-to')?.addEventListener('change', handleFiltersChange);
+
+    // Text search filters with input event for real-time filtering
+    container.querySelector('#manager-dashboard-filter-doctor-name')?.addEventListener('input', handleFiltersChange);
+    container.querySelector('#manager-dashboard-filter-account-name')?.addEventListener('input', handleFiltersChange);
 
     setupDualRowFilters();
 
@@ -712,9 +760,15 @@ function getManagerDashboardFilteredData() {
 }
 
 function getManagerDashboardFilteredCases() {
-    const status = document.getElementById('manager-dashboard-filter-status')?.value;
+    // Row 1 filters
+    const specialist = document.getElementById('manager-dashboard-filter-specialist')?.value;
+    const manager = document.getElementById('manager-dashboard-filter-manager')?.value;
     const accountType = document.getElementById('manager-dashboard-filter-account-type')?.value;
     const companyType = document.getElementById('manager-dashboard-filter-company-type')?.value;
+
+    // Text search filters
+    const doctorNameSearch = document.getElementById('manager-dashboard-filter-doctor-name')?.value.trim().toLowerCase() || '';
+    const accountNameSearch = document.getElementById('manager-dashboard-filter-account-name')?.value.trim().toLowerCase() || '';
 
     // Dual-row filter values
     const companyCompany = document.getElementById('manager-dashboard-filter-company-company')?.value;
@@ -736,8 +790,27 @@ function getManagerDashboardFilteredCases() {
     const toDate = toValue ? new Date(toValue) : null;
 
     return state.teamCases.filter((caseItem) => {
-        if (status && caseItem.status !== status) return false;
+        // Row 1 filters
+        if (specialist && caseItem.submitted_by_id !== specialist) return false;
         if (accountType && caseItem.account_type !== accountType) return false;
+        if (manager) {
+            const submitter =
+                state.teamMembersById?.get(String(caseItem.submitted_by_id)) ||
+                state.teamMembers.find((member) => String(member.id) === String(caseItem.submitted_by_id));
+            const directManagerId = submitter?.direct_manager_id ? String(submitter.direct_manager_id) : '';
+            const lineManagerId = submitter?.line_manager_id ? String(submitter.line_manager_id) : '';
+            if (manager !== directManagerId && manager !== lineManagerId) {
+                return false;
+            }
+        }
+
+        // Text search filters
+        if (doctorNameSearch && !(caseItem.doctor_name || '').toLowerCase().includes(doctorNameSearch)) {
+            return false;
+        }
+        if (accountNameSearch && !(caseItem.account_name || '').toLowerCase().includes(accountNameSearch)) {
+            return false;
+        }
 
         const products = state.teamCaseProductsByCase.get(caseItem.id) || [];
 
