@@ -2251,7 +2251,7 @@ function renderTeamCaseStats(cases = []) {
 
     container.innerHTML = `
         <div class="stat-card">
-            <h4>Company Cases</h4>
+            <h4>DMC Cases</h4>
             <div class="value">${formatNumber(metrics.companyCaseCount)}</div>
         </div>
         <div class="stat-card">
@@ -2267,7 +2267,7 @@ function renderTeamCaseStats(cases = []) {
             <div class="value">${formatNumber(metrics.totalCaseCount)}</div>
         </div>
         <div class="stat-card">
-            <h4>Company Units</h4>
+            <h4>DMC Units</h4>
             <div class="value">${formatNumber(metrics.companyUnits)}</div>
         </div>
         <div class="stat-card">
@@ -5037,7 +5037,7 @@ function viewMyCaseDetails(id) {
                 </div>
                 <div class="col-md-6">
                     <div class="review-field">
-                        <span>Total Company Units</span>
+                        <span>Total DMC Units</span>
                         <strong>${formatNumber(companyUnits)}</strong>
                     </div>
                 </div>
@@ -5215,7 +5215,7 @@ function renderMyCaseStats(cases) {
 
     container.innerHTML = `
         <div class="stat-card">
-            <h4>Company Cases</h4>
+            <h4>DMC Cases</h4>
             <div class="value">${formatNumber(metrics.companyCaseCount)}</div>
         </div>
         <div class="stat-card">
@@ -5231,7 +5231,7 @@ function renderMyCaseStats(cases) {
             <div class="value">${formatNumber(metrics.totalCaseCount)}</div>
         </div>
         <div class="stat-card">
-            <h4>Company Units</h4>
+            <h4>DMC Units</h4>
             <div class="value">${formatNumber(metrics.companyUnits)}</div>
         </div>
         <div class="stat-card">
@@ -5506,7 +5506,7 @@ function renderDashboardStats(cases, caseProductsMap) {
 
     container.innerHTML = `
         <div class="stat-card">
-            <h4>Company Cases</h4>
+            <h4>DMC Cases</h4>
             <div class="value">${formatNumber(metrics.companyCaseCount)}</div>
         </div>
         <div class="stat-card">
@@ -5522,7 +5522,7 @@ function renderDashboardStats(cases, caseProductsMap) {
             <div class="value">${formatNumber(metrics.totalCaseCount)}</div>
         </div>
         <div class="stat-card">
-            <h4>Company Units</h4>
+            <h4>DMC Units</h4>
             <div class="value">${formatNumber(metrics.companyUnits)}</div>
         </div>
         <div class="stat-card">
