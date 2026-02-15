@@ -42,11 +42,17 @@ import {
     calculateUnitsMarketShare,
     calculateUPAvsPrivateCases,
     calculateUnitsPerCategory,
+    calculateUnitsByCategory,
     calculateUnitsPerCompanyStacked,
     calculateCasesByProductSpecialist,
     calculateCasesByProduct,
     calculateUnitsByProductSpecialist,
     calculateUnitsByProduct,
+    calculateDMCCasesByProduct,
+    calculateCompetitorCasesByProduct,
+    calculateDMCUnitsByProduct,
+    calculateCompetitorUnitsByProduct,
+    calculateCasesByCategory,
     attachProductsToggle
 } from './caseAnalytics.js';
 
@@ -67,6 +73,12 @@ const state = {
     autocompletes: {},
     companyProductsMap: new Map(),
     caseFormRows: 1,
+    chartPagination: {
+        dmcCasesPage: 0,
+        competitorCasesPage: 0,
+        dmcUnitsPage: 0,
+        competitorUnitsPage: 0
+    },
     filters: {
         products: {
             company: '',
@@ -2129,18 +2141,22 @@ function renderDashboardCharts(cases, caseProductsMap, caseProducts) {
     // Cases Analysis Section
     renderNumberOfCasesChart(cases, caseProductsMap);
     renderCasesMarketShareChart(cases, caseProductsMap);
+    renderCasesByCategoryChart(cases, caseProductsMap);
     renderMonthlyTrendChart(cases, caseProductsMap);
     renderUPAvsPrivateCasesChart(cases);
     renderCasesByPSChart(cases);
     renderCasesByProductChart(cases, caseProductsMap);
+    renderDMCCasesByProductChart(cases, caseProductsMap);
+    renderCompetitorCasesByProductChart(cases, caseProductsMap);
 
     // Units Analysis Section
     renderUnitsMarketShareChart(cases, caseProductsMap);
     renderUnitsPerCategoryChart(caseProducts, cases, caseProductsMap);
     renderUnitsPerCompanyChart(cases, caseProductsMap);
     renderMonthlyUnitsTrendChart(cases, caseProductsMap);
-    renderUnitsByPSChart(cases);
-    renderUnitsByProductChart(caseProducts, cases, caseProductsMap);
+    renderUnitsByPSChart(cases, caseProductsMap);
+    renderDMCUnitsByProductChart(caseProducts, cases, caseProductsMap);
+    renderCompetitorUnitsByProductChart(caseProducts, cases, caseProductsMap);
 
     // Setup collapse button
     setupChartSectionToggle();
@@ -2386,7 +2402,7 @@ function renderCasesMarketShareChart(cases, caseProductsMap) {
         data = result.data;
     }
 
-    const colors = [
+    const baseColors = [
         'rgba(99,102,241,0.9)',
         'rgba(236,72,153,0.9)',
         'rgba(34,197,94,0.9)',
@@ -2396,15 +2412,24 @@ function renderCasesMarketShareChart(cases, caseProductsMap) {
         'rgba(236,72,153,0.9)',
         'rgba(59,130,246,0.9)',
         'rgba(16,185,129,0.9)',
-        'rgba(245,158,11,0.9)',
-        'rgba(107,114,128,0.9)'
+        'rgba(245,158,11,0.9)'
     ];
+
+    // Build colors array - ensure "Other Companies" gets red color
+    const colors = [];
+    for (let i = 0; i < labels.length; i++) {
+        if (i === labels.length - 1 && (labels[i] === 'Other Companies' || labels[i] === 'Others')) {
+            colors.push('rgba(220,38,38,0.9)'); // Red for Others
+        } else {
+            colors.push(baseColors[i % baseColors.length]);
+        }
+    }
 
     destroyChart(state.charts.casesMarketShare);
     state.charts.casesMarketShare = buildPieChart(canvas, {
         labels,
         data,
-        backgroundColor: colors.slice(0, labels.length)
+        backgroundColor: colors
     });
 }
 
@@ -2617,31 +2642,42 @@ function renderUnitsMarketShareChart(cases, caseProductsMap) {
         data = result.data;
     }
 
-    const colors = [
+    const baseColors = [
         'rgba(99,102,241,0.9)',
         'rgba(236,72,153,0.9)',
         'rgba(34,197,94,0.9)',
         'rgba(251,191,36,0.9)',
         'rgba(14,165,233,0.9)',
         'rgba(168,85,247,0.9)',
-        'rgba(236,72,153,0.9)',
         'rgba(59,130,246,0.9)',
         'rgba(16,185,129,0.9)',
-        'rgba(245,158,11,0.9)',
-        'rgba(107,114,128,0.9)'
+        'rgba(245,158,11,0.9)'
     ];
+
+    // Build colors array - ensure "Other Companies" gets red color
+    const colors = [];
+    for (let i = 0; i < labels.length; i++) {
+        if (i === labels.length - 1 && (labels[i] === 'Other Companies' || labels[i] === 'Others')) {
+            colors.push('rgba(220,38,38,0.9)'); // Red for Others
+        } else {
+            colors.push(baseColors[i % baseColors.length]);
+        }
+    }
 
     destroyChart(state.charts.unitsMarketShare);
     state.charts.unitsMarketShare = buildPieChart(canvas, {
         labels,
         data,
-        backgroundColor: colors.slice(0, labels.length)
+        backgroundColor: colors
     });
 }
 
 function renderUnitsPerCategoryChart(caseProducts, cases, caseProductsMap) {
     const canvas = document.getElementById('psChartUnitsPerCategory');
     if (!canvas) return;
+
+    // Get company type filter
+    const companyType = document.getElementById('ps-dashboard-filter-company-type')?.value || '';
 
     // Get dual-row filter values to filter products
     const companyCompany = document.getElementById('ps-dashboard-filter-company-company')?.value || '';
@@ -2665,16 +2701,69 @@ function renderUnitsPerCategoryChart(caseProducts, cases, caseProductsMap) {
         filteredProducts = caseProducts.filter(p => validCaseIds.has(p.case_id));
     }
 
-    const { labels, data } = calculateUnitsPerCategory(filteredProducts);
+    // Filter by company type if selected
+    if (companyType === 'company') {
+        // Only show categories from company products
+        filteredProducts = filteredProducts.filter(p => p.is_company_product);
+    } else if (companyType === 'competitor') {
+        // Only show categories from competitor products
+        filteredProducts = filteredProducts.filter(p => !p.is_company_product);
+    }
+
+    const { labels, data, counts } = calculateUnitsByCategory(filteredProducts);
+
+    const baseColors = [
+        'rgba(99,102,241,0.85)',
+        'rgba(236,72,153,0.85)',
+        'rgba(34,197,94,0.85)',
+        'rgba(251,191,36,0.85)',
+        'rgba(168,85,247,0.85)',
+        'rgba(59,130,246,0.85)',
+        'rgba(249,115,22,0.85)',
+        'rgba(20,184,166,0.85)',
+        'rgba(244,63,94,0.85)',
+        'rgba(139,92,246,0.85)'
+    ];
+
+    // Build colors array - ensure "Others" gets red color
+    const colors = [];
+    for (let i = 0; i < labels.length; i++) {
+        if (i === labels.length - 1 && (labels[i] === 'Other Companies' || labels[i] === 'Others')) {
+            colors.push('rgba(220,38,38,0.9)'); // Red for Others
+        } else {
+            colors.push(baseColors[i % baseColors.length]);
+        }
+    }
 
     destroyChart(state.charts.unitsPerCategory);
-    state.charts.unitsPerCategory = buildBarChart(canvas, {
+    state.charts.unitsPerCategory = buildPieChart(canvas, {
         labels,
-        datasets: [{
-            label: 'Units',
-            data,
-            backgroundColor: 'rgba(34,197,94,0.8)'
-        }]
+        data,
+        backgroundColor: colors,
+        options: {
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 15,
+                        usePointStyle: true,
+                        pointStyle: 'circle'
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            const count = counts[context.dataIndex] || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+                            return `${label}: ${value} units (${count} cases, ${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
     });
 }
 
@@ -2717,6 +2806,367 @@ function renderUnitsPerCompanyChart(cases, caseProductsMap) {
                             return `${companyName}: ${units} units`;
                         }
                     }
+                }
+            }
+        }
+    });
+}
+
+function renderCasesByCategoryChart(cases, caseProductsMap) {
+    const canvas = document.getElementById('psChartCasesByCategory');
+    if (!canvas) return;
+
+    // Get company type filter
+    const companyType = document.getElementById('ps-dashboard-filter-company-type')?.value || '';
+
+    // Get dual-row filter values to filter cases
+    const hasCompanyFilters = document.getElementById('ps-dashboard-filter-company-company')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-category')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-sub-category')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-product')?.value;
+    const hasCompetitorFilters = document.getElementById('ps-dashboard-filter-competitor-company')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-category')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-sub-category')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-product')?.value;
+
+    // Filter cases based on dual-row selections
+    let filteredCases = cases;
+    if (hasCompanyFilters || hasCompetitorFilters) {
+        const { companyCases, competitorCases } = getDualRowCaseSets(cases, caseProductsMap);
+        const validCaseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
+        filteredCases = cases.filter(c => validCaseIds.has(c.id));
+    }
+
+    // Filter by company type if selected
+    if (companyType === 'company') {
+        // Only show categories from company products
+        filteredCases = filteredCases.filter(c => {
+            const products = caseProductsMap.get(c.id) || [];
+            return products.some(p => p.is_company_product);
+        });
+    } else if (companyType === 'competitor') {
+        // Only show categories from competitor products
+        filteredCases = filteredCases.filter(c => {
+            const products = caseProductsMap.get(c.id) || [];
+            return products.some(p => !p.is_company_product);
+        });
+    }
+
+    const { labels, data, counts } = calculateCasesByCategory(filteredCases, caseProductsMap);
+
+    const baseColors = [
+        'rgba(99,102,241,0.85)',
+        'rgba(236,72,153,0.85)',
+        'rgba(34,197,94,0.85)',
+        'rgba(251,191,36,0.85)',
+        'rgba(168,85,247,0.85)',
+        'rgba(59,130,246,0.85)',
+        'rgba(249,115,22,0.85)',
+        'rgba(20,184,166,0.85)',
+        'rgba(244,63,94,0.85)',
+        'rgba(139,92,246,0.85)'
+    ];
+
+    // Build colors array - ensure "Others" gets red color
+    const colors = [];
+    for (let i = 0; i < labels.length; i++) {
+        if (i === labels.length - 1 && (labels[i] === 'Other Companies' || labels[i] === 'Others')) {
+            colors.push('rgba(220,38,38,0.9)'); // Red for Others
+        } else {
+            colors.push(baseColors[i % baseColors.length]);
+        }
+    }
+
+    destroyChart(state.charts.casesByCategory);
+    state.charts.casesByCategory = buildPieChart(canvas, {
+        labels,
+        data,
+        backgroundColor: colors,
+        options: {
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 15,
+                        usePointStyle: true,
+                        pointStyle: 'circle'
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            const count = counts[context.dataIndex] || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+                            return `${label}: ${value} cases (${count} products, ${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderDMCCasesByProductChart(cases, caseProductsMap) {
+    const canvas = document.getElementById('psChartDMCCasesByProduct');
+    if (!canvas) return;
+
+    // Get dual-row filter values to filter cases
+    const hasCompanyFilters = document.getElementById('ps-dashboard-filter-company-company')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-category')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-sub-category')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-product')?.value;
+    const hasCompetitorFilters = document.getElementById('ps-dashboard-filter-competitor-company')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-category')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-sub-category')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-product')?.value;
+
+    // Filter cases based on dual-row selections
+    let filteredCases = cases;
+    if (hasCompanyFilters || hasCompetitorFilters) {
+        const { companyCases, competitorCases } = getDualRowCaseSets(cases, caseProductsMap);
+        const validCaseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
+        filteredCases = cases.filter(c => validCaseIds.has(c.id));
+    }
+
+    const { allLabels, allData, totalProducts } = calculateDMCCasesByProduct(filteredCases, caseProductsMap);
+
+    // Pagination
+    const page = state.chartPagination.dmcCasesPage;
+    const pageSize = 10;
+    const start = page * pageSize;
+    const end = start + pageSize;
+    const labels = allLabels.slice(start, end);
+    const data = allData.slice(start, end);
+
+    // Update page info
+    const pageInfo = document.getElementById('psDmcCasesPageInfo');
+    if (pageInfo) {
+        if (totalProducts === 0) {
+            pageInfo.textContent = '0';
+        } else {
+            pageInfo.textContent = `${start + 1}-${Math.min(end, totalProducts)} of ${totalProducts}`;
+        }
+    }
+
+    // Update button states
+    const prevBtn = document.getElementById('btnPSDMCCasesPrev');
+    const nextBtn = document.getElementById('btnPSDMCCasesNext');
+    if (prevBtn) prevBtn.disabled = page === 0;
+    if (nextBtn) nextBtn.disabled = end >= totalProducts;
+
+    destroyChart(state.charts.dmcCasesByProduct);
+    state.charts.dmcCasesByProduct = buildBarChart(canvas, {
+        labels,
+        datasets: [{
+            label: 'Cases',
+            data,
+            backgroundColor: 'rgba(99,102,241,0.85)' // Blue for DMC
+        }],
+        options: {
+            plugins: {
+                legend: {
+                    display: false // Hide legend for better sizing
+                }
+            }
+        }
+    });
+}
+
+function renderCompetitorCasesByProductChart(cases, caseProductsMap) {
+    const canvas = document.getElementById('psChartCompetitorCasesByProduct');
+    if (!canvas) return;
+
+    // Get dual-row filter values to filter cases
+    const hasCompanyFilters = document.getElementById('ps-dashboard-filter-company-company')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-category')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-sub-category')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-product')?.value;
+    const hasCompetitorFilters = document.getElementById('ps-dashboard-filter-competitor-company')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-category')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-sub-category')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-product')?.value;
+
+    // Filter cases based on dual-row selections
+    let filteredCases = cases;
+    if (hasCompanyFilters || hasCompetitorFilters) {
+        const { companyCases, competitorCases } = getDualRowCaseSets(cases, caseProductsMap);
+        const validCaseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
+        filteredCases = cases.filter(c => validCaseIds.has(c.id));
+    }
+
+    const { allLabels, allData, totalProducts } = calculateCompetitorCasesByProduct(filteredCases, caseProductsMap);
+
+    // Pagination
+    const page = state.chartPagination.competitorCasesPage;
+    const pageSize = 10;
+    const start = page * pageSize;
+    const end = start + pageSize;
+    const labels = allLabels.slice(start, end);
+    const data = allData.slice(start, end);
+
+    // Update page info
+    const pageInfo = document.getElementById('psCompetitorCasesPageInfo');
+    if (pageInfo) {
+        if (totalProducts === 0) {
+            pageInfo.textContent = '0';
+        } else {
+            pageInfo.textContent = `${start + 1}-${Math.min(end, totalProducts)} of ${totalProducts}`;
+        }
+    }
+
+    // Update button states
+    const prevBtn = document.getElementById('btnPSCompetitorCasesPrev');
+    const nextBtn = document.getElementById('btnPSCompetitorCasesNext');
+    if (prevBtn) prevBtn.disabled = page === 0;
+    if (nextBtn) nextBtn.disabled = end >= totalProducts;
+
+    destroyChart(state.charts.competitorCasesByProduct);
+    state.charts.competitorCasesByProduct = buildBarChart(canvas, {
+        labels,
+        datasets: [{
+            label: 'Cases',
+            data,
+            backgroundColor: 'rgba(236,72,153,0.85)' // Pink for competitor
+        }],
+        options: {
+            plugins: {
+                legend: {
+                    display: false // Hide legend for better sizing
+                }
+            }
+        }
+    });
+}
+
+function renderDMCUnitsByProductChart(caseProducts, cases, caseProductsMap) {
+    const canvas = document.getElementById('psChartDMCUnitsByProduct');
+    if (!canvas) return;
+
+    // Get dual-row filter values to filter products
+    const hasCompanyFilters = document.getElementById('ps-dashboard-filter-company-company')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-category')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-sub-category')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-product')?.value;
+    const hasCompetitorFilters = document.getElementById('ps-dashboard-filter-competitor-company')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-category')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-sub-category')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-product')?.value;
+
+    // Filter products based on dual-row selections
+    let filteredProducts = caseProducts;
+    if (hasCompanyFilters || hasCompetitorFilters) {
+        const { companyCases, competitorCases } = getDualRowCaseSets(cases, caseProductsMap);
+        const validCaseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
+        filteredProducts = caseProducts.filter(p => validCaseIds.has(p.case_id));
+    }
+
+    const { allLabels, allData, totalProducts } = calculateDMCUnitsByProduct(filteredProducts);
+
+    // Pagination
+    const page = state.chartPagination.dmcUnitsPage;
+    const pageSize = 10;
+    const start = page * pageSize;
+    const end = start + pageSize;
+    const labels = allLabels.slice(start, end);
+    const data = allData.slice(start, end);
+
+    // Update page info
+    const pageInfo = document.getElementById('psDmcUnitsPageInfo');
+    if (pageInfo) {
+        if (totalProducts === 0) {
+            pageInfo.textContent = '0';
+        } else {
+            pageInfo.textContent = `${start + 1}-${Math.min(end, totalProducts)} of ${totalProducts}`;
+        }
+    }
+
+    // Update button states
+    const prevBtn = document.getElementById('btnPSDMCUnitsPrev');
+    const nextBtn = document.getElementById('btnPSDMCUnitsNext');
+    if (prevBtn) prevBtn.disabled = page === 0;
+    if (nextBtn) nextBtn.disabled = end >= totalProducts;
+
+    destroyChart(state.charts.dmcUnitsByProduct);
+    state.charts.dmcUnitsByProduct = buildBarChart(canvas, {
+        labels,
+        datasets: [{
+            label: 'Units',
+            data,
+            backgroundColor: 'rgba(99,102,241,0.85)' // Blue for DMC
+        }],
+        options: {
+            plugins: {
+                legend: {
+                    display: false // Hide legend for better sizing
+                }
+            }
+        }
+    });
+}
+
+function renderCompetitorUnitsByProductChart(caseProducts, cases, caseProductsMap) {
+    const canvas = document.getElementById('psChartCompetitorUnitsByProduct');
+    if (!canvas) return;
+
+    // Get dual-row filter values to filter products
+    const hasCompanyFilters = document.getElementById('ps-dashboard-filter-company-company')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-category')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-sub-category')?.value ||
+                              document.getElementById('ps-dashboard-filter-company-product')?.value;
+    const hasCompetitorFilters = document.getElementById('ps-dashboard-filter-competitor-company')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-category')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-sub-category')?.value ||
+                                 document.getElementById('ps-dashboard-filter-competitor-product')?.value;
+
+    // Filter products based on dual-row selections
+    let filteredProducts = caseProducts;
+    if (hasCompanyFilters || hasCompetitorFilters) {
+        const { companyCases, competitorCases } = getDualRowCaseSets(cases, caseProductsMap);
+        const validCaseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
+        filteredProducts = caseProducts.filter(p => validCaseIds.has(p.case_id));
+    }
+
+    const { allLabels, allData, totalProducts } = calculateCompetitorUnitsByProduct(filteredProducts);
+
+    // Pagination
+    const page = state.chartPagination.competitorUnitsPage;
+    const pageSize = 10;
+    const start = page * pageSize;
+    const end = start + pageSize;
+    const labels = allLabels.slice(start, end);
+    const data = allData.slice(start, end);
+
+    // Update page info
+    const pageInfo = document.getElementById('psCompetitorUnitsPageInfo');
+    if (pageInfo) {
+        if (totalProducts === 0) {
+            pageInfo.textContent = '0';
+        } else {
+            pageInfo.textContent = `${start + 1}-${Math.min(end, totalProducts)} of ${totalProducts}`;
+        }
+    }
+
+    // Update button states
+    const prevBtn = document.getElementById('btnPSCompetitorUnitsPrev');
+    const nextBtn = document.getElementById('btnPSCompetitorUnitsNext');
+    if (prevBtn) prevBtn.disabled = page === 0;
+    if (nextBtn) nextBtn.disabled = end >= totalProducts;
+
+    destroyChart(state.charts.competitorUnitsByProduct);
+    state.charts.competitorUnitsByProduct = buildBarChart(canvas, {
+        labels,
+        datasets: [{
+            label: 'Units',
+            data,
+            backgroundColor: 'rgba(236,72,153,0.85)' // Pink for competitor
+        }],
+        options: {
+            plugins: {
+                legend: {
+                    display: false // Hide legend for better sizing
                 }
             }
         }
@@ -2777,11 +3227,21 @@ function renderMonthlyUnitsTrendChart(cases, caseProductsMap) {
     });
 }
 
-function renderUnitsByPSChart(cases) {
+function renderUnitsByPSChart(cases, caseProductsMap) {
     const canvas = document.getElementById('psChartUnitsPerPS');
     if (!canvas) return;
 
-    const { labels, data } = calculateUnitsByProductSpecialist(cases);
+    // Get dual-row aware case sets
+    const { companyCases, competitorCases, hasCompanyFilters, hasCompetitorFilters } = getDualRowCaseSets(cases, caseProductsMap);
+
+    // Use filtered cases if dual-row filters are active
+    let filteredCases = cases;
+    if (hasCompanyFilters || hasCompetitorFilters) {
+        const caseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
+        filteredCases = cases.filter(c => caseIds.has(c.id));
+    }
+
+    const { labels, data } = calculateUnitsByProductSpecialist(filteredCases);
 
     destroyChart(state.charts.unitsByPS);
     state.charts.unitsByPS = buildBarChart(canvas, {
@@ -2871,6 +3331,96 @@ function setupChartSectionToggle() {
             newToggleBtn.innerHTML = '<i class="bi bi-chevron-down me-2"></i>Expand Cases Analysis';
         }
     });
+
+    // Setup navigation buttons for paginated charts
+    setupChartNavigationButtons();
+}
+
+function setupChartNavigationButtons() {
+    // DMC Cases navigation
+    const btnDMCCasesPrev = document.getElementById('btnPSDMCCasesPrev');
+    const btnDMCCasesNext = document.getElementById('btnPSDMCCasesNext');
+    if (btnDMCCasesPrev && btnDMCCasesNext) {
+        // Clone to remove old listeners
+        const newPrev = btnDMCCasesPrev.cloneNode(true);
+        const newNext = btnDMCCasesNext.cloneNode(true);
+        btnDMCCasesPrev.parentNode.replaceChild(newPrev, btnDMCCasesPrev);
+        btnDMCCasesNext.parentNode.replaceChild(newNext, btnDMCCasesNext);
+
+        newPrev.addEventListener('click', () => {
+            if (state.chartPagination.dmcCasesPage > 0) {
+                state.chartPagination.dmcCasesPage--;
+                renderDashboard();
+            }
+        });
+        newNext.addEventListener('click', () => {
+            state.chartPagination.dmcCasesPage++;
+            renderDashboard();
+        });
+    }
+
+    // Competitor Cases navigation
+    const btnCompetitorCasesPrev = document.getElementById('btnPSCompetitorCasesPrev');
+    const btnCompetitorCasesNext = document.getElementById('btnPSCompetitorCasesNext');
+    if (btnCompetitorCasesPrev && btnCompetitorCasesNext) {
+        const newPrev = btnCompetitorCasesPrev.cloneNode(true);
+        const newNext = btnCompetitorCasesNext.cloneNode(true);
+        btnCompetitorCasesPrev.parentNode.replaceChild(newPrev, btnCompetitorCasesPrev);
+        btnCompetitorCasesNext.parentNode.replaceChild(newNext, btnCompetitorCasesNext);
+
+        newPrev.addEventListener('click', () => {
+            if (state.chartPagination.competitorCasesPage > 0) {
+                state.chartPagination.competitorCasesPage--;
+                renderDashboard();
+            }
+        });
+        newNext.addEventListener('click', () => {
+            state.chartPagination.competitorCasesPage++;
+            renderDashboard();
+        });
+    }
+
+    // DMC Units navigation
+    const btnDMCUnitsPrev = document.getElementById('btnPSDMCUnitsPrev');
+    const btnDMCUnitsNext = document.getElementById('btnPSDMCUnitsNext');
+    if (btnDMCUnitsPrev && btnDMCUnitsNext) {
+        const newPrev = btnDMCUnitsPrev.cloneNode(true);
+        const newNext = btnDMCUnitsNext.cloneNode(true);
+        btnDMCUnitsPrev.parentNode.replaceChild(newPrev, btnDMCUnitsPrev);
+        btnDMCUnitsNext.parentNode.replaceChild(newNext, btnDMCUnitsNext);
+
+        newPrev.addEventListener('click', () => {
+            if (state.chartPagination.dmcUnitsPage > 0) {
+                state.chartPagination.dmcUnitsPage--;
+                renderDashboard();
+            }
+        });
+        newNext.addEventListener('click', () => {
+            state.chartPagination.dmcUnitsPage++;
+            renderDashboard();
+        });
+    }
+
+    // Competitor Units navigation
+    const btnCompetitorUnitsPrev = document.getElementById('btnPSCompetitorUnitsPrev');
+    const btnCompetitorUnitsNext = document.getElementById('btnPSCompetitorUnitsNext');
+    if (btnCompetitorUnitsPrev && btnCompetitorUnitsNext) {
+        const newPrev = btnCompetitorUnitsPrev.cloneNode(true);
+        const newNext = btnCompetitorUnitsNext.cloneNode(true);
+        btnCompetitorUnitsPrev.parentNode.replaceChild(newPrev, btnCompetitorUnitsPrev);
+        btnCompetitorUnitsNext.parentNode.replaceChild(newNext, btnCompetitorUnitsNext);
+
+        newPrev.addEventListener('click', () => {
+            if (state.chartPagination.competitorUnitsPage > 0) {
+                state.chartPagination.competitorUnitsPage--;
+                renderDashboard();
+            }
+        });
+        newNext.addEventListener('click', () => {
+            state.chartPagination.competitorUnitsPage++;
+            renderDashboard();
+        });
+    }
 }
 
 async function refreshNotifications() {

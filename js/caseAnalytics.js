@@ -1336,6 +1336,56 @@ export function calculateCasesByProduct(cases = [], caseProductsMap = new Map())
 }
 
 /**
+ * Calculate DMC (company) cases by product with pagination
+ * Returns all company products sorted by case count
+ */
+export function calculateDMCCasesByProduct(cases = [], caseProductsMap = new Map()) {
+    const map = new Map();
+    cases.forEach((caseItem) => {
+        const products = caseProductsMap.get(caseItem.id) || [];
+        const companyProductNames = new Set(
+            products.filter(p => p.is_company_product).map(p => p.product_name || 'Unknown').filter(Boolean)
+        );
+        companyProductNames.forEach((productName) => {
+            map.set(productName, (map.get(productName) || 0) + 1);
+        });
+    });
+
+    const sorted = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+
+    return {
+        allLabels: sorted.map(([name]) => name),
+        allData: sorted.map(([, count]) => count),
+        totalProducts: sorted.length
+    };
+}
+
+/**
+ * Calculate competitor cases by product with pagination
+ * Returns all competitor products sorted by case count
+ */
+export function calculateCompetitorCasesByProduct(cases = [], caseProductsMap = new Map()) {
+    const map = new Map();
+    cases.forEach((caseItem) => {
+        const products = caseProductsMap.get(caseItem.id) || [];
+        const competitorProductNames = new Set(
+            products.filter(p => !p.is_company_product).map(p => p.product_name || 'Unknown').filter(Boolean)
+        );
+        competitorProductNames.forEach((productName) => {
+            map.set(productName, (map.get(productName) || 0) + 1);
+        });
+    });
+
+    const sorted = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+
+    return {
+        allLabels: sorted.map(([name]) => name),
+        allData: sorted.map(([, count]) => count),
+        totalProducts: sorted.length
+    };
+}
+
+/**
  * Calculate units per product specialist
  */
 export function calculateUnitsByProductSpecialist(cases = []) {
@@ -1373,6 +1423,115 @@ export function calculateUnitsByProduct(caseProducts = []) {
         labels: sorted.map(([name]) => name),
         data: sorted.map(([, units]) => units)
     };
+}
+
+/**
+ * Calculate DMC (company) units by product with pagination
+ * Returns all company products sorted by units
+ */
+export function calculateDMCUnitsByProduct(caseProducts = []) {
+    const map = new Map();
+    caseProducts.forEach((product) => {
+        if (product.is_company_product) {
+            const productName = product.product_name || 'Unknown';
+            map.set(productName, (map.get(productName) || 0) + (product.units || 0));
+        }
+    });
+
+    const sorted = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+
+    return {
+        allLabels: sorted.map(([name]) => name),
+        allData: sorted.map(([, units]) => units),
+        totalProducts: sorted.length
+    };
+}
+
+/**
+ * Calculate competitor units by product with pagination
+ * Returns all competitor products sorted by units
+ */
+export function calculateCompetitorUnitsByProduct(caseProducts = []) {
+    const map = new Map();
+    caseProducts.forEach((product) => {
+        if (!product.is_company_product) {
+            const productName = product.product_name || 'Unknown';
+            map.set(productName, (map.get(productName) || 0) + (product.units || 0));
+        }
+    });
+
+    const sorted = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+
+    return {
+        allLabels: sorted.map(([name]) => name),
+        allData: sorted.map(([, units]) => units),
+        totalProducts: sorted.length
+    };
+}
+
+/**
+ * Calculate cases by category (for pie chart)
+ * Returns top 5 categories with "Others" for the rest
+ */
+export function calculateCasesByCategory(cases = [], caseProductsMap = new Map()) {
+    const categoryMap = new Map();
+    const categoryProductCount = new Map();
+
+    cases.forEach((caseItem) => {
+        const products = caseProductsMap.get(caseItem.id) || [];
+        const categories = new Set(products.map(p => p.category || 'Unknown').filter(Boolean));
+        categories.forEach((category) => {
+            categoryMap.set(category, (categoryMap.get(category) || 0) + 1);
+            categoryProductCount.set(category, (categoryProductCount.get(category) || 0) + products.filter(p => (p.category || 'Unknown') === category).length);
+        });
+    });
+
+    const sorted = Array.from(categoryMap.entries()).sort((a, b) => b[1] - a[1]);
+    const top5 = sorted.slice(0, 5);
+    const others = sorted.slice(5);
+
+    const labels = top5.map(([cat]) => cat);
+    const data = top5.map(([, count]) => count);
+    const counts = top5.map(([cat]) => categoryProductCount.get(cat) || 0);
+
+    if (others.length > 0) {
+        labels.push('Others');
+        data.push(others.reduce((sum, [, count]) => sum + count, 0));
+        counts.push(others.reduce((sum, [cat]) => sum + (categoryProductCount.get(cat) || 0), 0));
+    }
+
+    return { labels, data, counts };
+}
+
+/**
+ * Calculate units by category (for pie chart)
+ * Returns top 5 categories with "Others" for the rest
+ */
+export function calculateUnitsByCategory(caseProducts = []) {
+    const categoryMap = new Map();
+    const categoryCaseCount = new Map();
+
+    caseProducts.forEach((product) => {
+        const category = product.category || 'Unknown';
+        categoryMap.set(category, (categoryMap.get(category) || 0) + (product.units || 0));
+        categoryCaseCount.set(category, (categoryCaseCount.get(category) || 0) + 1);
+    });
+
+    const sorted = Array.from(categoryMap.entries()).sort((a, b) => b[1] - a[1]);
+    const top5 = sorted.slice(0, 5);
+    const others = sorted.slice(5);
+
+    const labels = top5.map(([cat]) => cat);
+    const data = top5.map(([, units]) => units);
+    const counts = top5.map(([cat]) => categoryCaseCount.get(cat) || 0);
+
+    if (others.length > 0) {
+        labels.push('Others');
+        data.push(others.reduce((sum, [, units]) => sum + units, 0));
+        counts.push(others.reduce((sum, [cat]) => sum + (categoryCaseCount.get(cat) || 0), 0));
+    }
+
+    return { labels, data, counts };
 }
 
 // Helper function to format month
