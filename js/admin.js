@@ -4846,6 +4846,116 @@ function getDualRowCaseSets(cases, caseProductsMap) {
     };
 }
 
+function getDashboardDualRowFilterContext() {
+    const companyCompany = document.getElementById('dashboard-filter-company-company')?.value || '';
+    const companyCategory = document.getElementById('dashboard-filter-company-category')?.value || '';
+    const companySubCategory = document.getElementById('dashboard-filter-company-sub-category')?.value || '';
+    const companyProduct = document.getElementById('dashboard-filter-company-product')?.value || '';
+
+    const competitorCompany = document.getElementById('dashboard-filter-competitor-company')?.value || '';
+    const competitorCategory = document.getElementById('dashboard-filter-competitor-category')?.value || '';
+    const competitorSubCategory = document.getElementById('dashboard-filter-competitor-sub-category')?.value || '';
+    const competitorProduct = document.getElementById('dashboard-filter-competitor-product')?.value || '';
+
+    const companyType = document.getElementById('dashboard-filter-company-type')?.value || '';
+
+    const hasCompanyFilters = Boolean(companyCompany || companyCategory || companySubCategory || companyProduct);
+    const hasCompetitorFilters = Boolean(competitorCompany || competitorCategory || competitorSubCategory || competitorProduct);
+
+    return {
+        companyCompany,
+        companyCategory,
+        companySubCategory,
+        companyProduct,
+        competitorCompany,
+        competitorCategory,
+        competitorSubCategory,
+        competitorProduct,
+        companyType,
+        hasCompanyFilters,
+        hasCompetitorFilters
+    };
+}
+
+function getDashboardFilteredProducts(cases, caseProductsMap) {
+    const ctx = getDashboardDualRowFilterContext();
+    const products = [];
+
+    cases.forEach((caseItem) => {
+        const caseId = caseItem.id;
+        const caseProducts = caseProductsMap.get(caseId) || [];
+        caseProducts.forEach((product) => {
+            products.push({ ...product, case_id: product.case_id || caseId });
+        });
+    });
+
+    const matchesCompanyRow = (product) => {
+        if (!product.is_company_product) return false;
+        if (ctx.companyCompany && (product.company_name || '') !== ctx.companyCompany) return false;
+        if (ctx.companyCategory && (product.category || '') !== ctx.companyCategory) return false;
+        if (ctx.companySubCategory && (product.sub_category || '') !== ctx.companySubCategory) return false;
+        if (ctx.companyProduct && String(product.product_id) !== ctx.companyProduct && product.product_name !== ctx.companyProduct) return false;
+        return true;
+    };
+
+    const matchesCompetitorRow = (product) => {
+        if (product.is_company_product) return false;
+        if (ctx.competitorCompany && (product.company_name || '') !== ctx.competitorCompany) return false;
+        if (ctx.competitorCategory && (product.category || '') !== ctx.competitorCategory) return false;
+        if (ctx.competitorSubCategory && (product.sub_category || '') !== ctx.competitorSubCategory) return false;
+        if (ctx.competitorProduct && String(product.product_id) !== ctx.competitorProduct && product.product_name !== ctx.competitorProduct) return false;
+        return true;
+    };
+
+    let filteredProducts = products.filter((product) => {
+        if (ctx.hasCompanyFilters && ctx.hasCompetitorFilters) {
+            return matchesCompanyRow(product) || matchesCompetitorRow(product);
+        }
+        if (ctx.hasCompanyFilters) {
+            return matchesCompanyRow(product);
+        }
+        if (ctx.hasCompetitorFilters) {
+            return matchesCompetitorRow(product);
+        }
+        return true;
+    });
+
+    if (ctx.companyType === 'company') {
+        filteredProducts = filteredProducts.filter((product) => product.is_company_product);
+    } else if (ctx.companyType === 'competitor') {
+        filteredProducts = filteredProducts.filter((product) => !product.is_company_product);
+    }
+
+    return filteredProducts;
+}
+
+function buildCaseProductsMapFromProducts(products = []) {
+    const map = new Map();
+    products.forEach((product) => {
+        const caseId = product.case_id;
+        if (!caseId) return;
+        if (!map.has(caseId)) map.set(caseId, []);
+        map.get(caseId).push(product);
+    });
+    return map;
+}
+
+function calculateUnitsByProductSpecialistFromProducts(cases, products = []) {
+    const caseSpecialistMap = new Map(cases.map((caseItem) => [caseItem.id, caseItem.submitted_by_name || 'Unknown']));
+    const specialistUnitsMap = new Map();
+
+    products.forEach((product) => {
+        const specialist = caseSpecialistMap.get(product.case_id) || 'Unknown';
+        specialistUnitsMap.set(specialist, (specialistUnitsMap.get(specialist) || 0) + (product.units || 0));
+    });
+
+    const sorted = Array.from(specialistUnitsMap.entries()).sort((a, b) => b[1] - a[1]);
+    return {
+        labels: sorted.map(([name]) => name),
+        data: sorted.map(([, units]) => units)
+    };
+}
+
 // Helper function to get metrics based on dual-row filter selections
 function getDualRowMetrics(cases, caseProductsMap) {
     // Get dual-row filter values
@@ -5294,27 +5404,35 @@ function renderCasesMarketShareChart(cases, caseProductsMap) {
     const canvas = document.getElementById('chartCasesMarketShare');
     if (!canvas) return;
 
-    // Get dual-row aware case sets
-    const { companyCases, competitorCases, hasCompanyFilters, hasCompetitorFilters } = getDualRowCaseSets(cases, caseProductsMap);
+    const ctx = getDashboardDualRowFilterContext();
+    const filteredProducts = getDashboardFilteredProducts(cases, caseProductsMap);
 
-    // Calculate market share based on dual-row filters
     let labels, data;
-    if (hasCompanyFilters && hasCompetitorFilters) {
-        // Both rows have filters - show company cases vs competitor cases
-        const companyCount = companyCases.length;
-        const competitorCount = competitorCases.length;
-        labels = ['Company', 'Competitor'];
-        data = [companyCount, competitorCount];
-    } else if (hasCompanyFilters) {
-        // Only company row has filters - show company cases
-        labels = ['Company'];
-        data = [companyCases.length];
-    } else if (hasCompetitorFilters) {
-        // Only competitor row has filters - show competitor cases
-        labels = ['Competitor'];
-        data = [competitorCases.length];
+    if (ctx.hasCompanyFilters || ctx.hasCompetitorFilters || ctx.companyType) {
+        const companyCaseIds = new Set(filteredProducts.filter((p) => p.is_company_product).map((p) => p.case_id));
+        const competitorCaseIds = new Set(filteredProducts.filter((p) => !p.is_company_product).map((p) => p.case_id));
+
+        if (ctx.companyType === 'company') {
+            labels = ['Company'];
+            data = [companyCaseIds.size];
+        } else if (ctx.companyType === 'competitor') {
+            labels = ['Competitor'];
+            data = [competitorCaseIds.size];
+        } else if (ctx.hasCompanyFilters && ctx.hasCompetitorFilters) {
+            labels = ['Company', 'Competitor'];
+            data = [companyCaseIds.size, competitorCaseIds.size];
+        } else if (ctx.hasCompanyFilters) {
+            labels = ['Company'];
+            data = [companyCaseIds.size];
+        } else if (ctx.hasCompetitorFilters) {
+            labels = ['Competitor'];
+            data = [competitorCaseIds.size];
+        } else {
+            labels = ['Company', 'Competitor'];
+            data = [companyCaseIds.size, competitorCaseIds.size];
+        }
     } else {
-        // No dual-row filters - use standard calculation
+        // No dual-row/company-type filters - use standard calculation
         const result = calculateCasesMarketShare(cases, caseProductsMap);
         labels = result.labels;
         data = result.data;
@@ -5432,7 +5550,14 @@ function renderCasesByPSChart(cases) {
             label: 'Cases',
             data,
             backgroundColor: 'rgba(14,165,233,0.8)'
-        }]
+        }],
+        options: {
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
     });
 }
 
@@ -5468,36 +5593,11 @@ function renderCasesByCategoryChart(cases, caseProductsMap) {
     const canvas = document.getElementById('chartCasesByCategory');
     if (!canvas) return;
 
-    // Get company type filter
-    const companyType = document.getElementById('dashboard-filter-company-type')?.value || '';
+    const filteredProducts = getDashboardFilteredProducts(cases, caseProductsMap);
+    const filteredCaseProductsMap = buildCaseProductsMapFromProducts(filteredProducts);
+    const filteredCases = cases.filter((caseItem) => filteredCaseProductsMap.has(caseItem.id));
 
-    // Get dual-row aware case sets
-    const { companyCases, competitorCases, hasCompanyFilters, hasCompetitorFilters } = getDualRowCaseSets(cases, caseProductsMap);
-
-    // Use filtered cases if dual-row filters are active
-    let filteredCases = cases;
-    if (hasCompanyFilters || hasCompetitorFilters) {
-        // Combine company and competitor cases (union)
-        const caseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
-        filteredCases = cases.filter(c => caseIds.has(c.id));
-    }
-
-    // Filter by company type if selected
-    if (companyType === 'company') {
-        // Only show categories from company products
-        filteredCases = filteredCases.filter(c => {
-            const products = caseProductsMap.get(c.id) || [];
-            return products.some(p => p.is_company_product);
-        });
-    } else if (companyType === 'competitor') {
-        // Only show categories from competitor products
-        filteredCases = filteredCases.filter(c => {
-            const products = caseProductsMap.get(c.id) || [];
-            return products.some(p => !p.is_company_product);
-        });
-    }
-
-    const { labels, data } = calculateCasesByCategory(filteredCases, caseProductsMap);
+    const { labels, data } = calculateCasesByCategory(filteredCases, filteredCaseProductsMap);
 
     const baseColors = [
         'rgba(99,102,241,0.9)',
@@ -5652,103 +5752,39 @@ function renderUnitsMarketShareChart(cases, caseProductsMap) {
     const canvas = document.getElementById('chartUnitsMarketShare');
     if (!canvas) return;
 
-    // Get dual-row aware case sets
-    const { companyCases, competitorCases, hasCompanyFilters, hasCompetitorFilters } = getDualRowCaseSets(cases, caseProductsMap);
+    const ctx = getDashboardDualRowFilterContext();
+    const filteredProducts = getDashboardFilteredProducts(cases, caseProductsMap);
 
-    // Calculate market share based on dual-row filters
     let labels, data;
-    if (hasCompanyFilters && hasCompetitorFilters) {
-        // Both rows have filters - show company units vs competitor units
-        // Get all filter values
-        const companyCompany = document.getElementById('dashboard-filter-company-company')?.value || '';
-        const companyCategory = document.getElementById('dashboard-filter-company-category')?.value || '';
-        const companySubCategory = document.getElementById('dashboard-filter-company-subcategory')?.value || '';
-        const companyProduct = document.getElementById('dashboard-filter-company-product')?.value || '';
-        const competitorCompany = document.getElementById('dashboard-filter-competitor-company')?.value || '';
-        const competitorCategory = document.getElementById('dashboard-filter-competitor-category')?.value || '';
-        const competitorSubCategory = document.getElementById('dashboard-filter-competitor-subcategory')?.value || '';
-        const competitorProduct = document.getElementById('dashboard-filter-competitor-product')?.value || '';
+    if (ctx.hasCompanyFilters || ctx.hasCompetitorFilters || ctx.companyType) {
+        const companyUnits = filteredProducts
+            .filter((p) => p.is_company_product)
+            .reduce((sum, p) => sum + (p.units || 0), 0);
+        const competitorUnits = filteredProducts
+            .filter((p) => !p.is_company_product)
+            .reduce((sum, p) => sum + (p.units || 0), 0);
 
-        // Calculate company units from matching products
-        let companyUnits = 0;
-        companyCases.forEach(caseItem => {
-            const products = caseProductsMap.get(caseItem.id) || [];
-            products.filter(product => {
-                if (!product.is_company_product) return false;
-                if (companyCompany && (product.company_name || '') !== companyCompany) return false;
-                if (companyCategory && (product.category || '') !== companyCategory) return false;
-                if (companySubCategory && (product.sub_category || '') !== companySubCategory) return false;
-                if (companyProduct && String(product.product_id) !== companyProduct && product.product_name !== companyProduct) return false;
-                return true;
-            }).forEach(p => companyUnits += p.units || 0);
-        });
-
-        // Calculate competitor units from matching products
-        let competitorUnits = 0;
-        competitorCases.forEach(caseItem => {
-            const products = caseProductsMap.get(caseItem.id) || [];
-            products.filter(product => {
-                if (product.is_company_product) return false;
-                if (competitorCompany && (product.company_name || '') !== competitorCompany) return false;
-                if (competitorCategory && (product.category || '') !== competitorCategory) return false;
-                if (competitorSubCategory && (product.sub_category || '') !== competitorSubCategory) return false;
-                if (competitorProduct && String(product.product_id) !== competitorProduct && product.product_name !== competitorProduct) return false;
-                return true;
-            }).forEach(p => competitorUnits += p.units || 0);
-        });
-
-        labels = ['Company', 'Competitor'];
-        data = [companyUnits, competitorUnits];
-    } else if (hasCompanyFilters) {
-        // Only company row has filters - show company units
-        // Get all company filter values
-        const companyCompany = document.getElementById('dashboard-filter-company-company')?.value || '';
-        const companyCategory = document.getElementById('dashboard-filter-company-category')?.value || '';
-        const companySubCategory = document.getElementById('dashboard-filter-company-subcategory')?.value || '';
-        const companyProduct = document.getElementById('dashboard-filter-company-product')?.value || '';
-
-        // Calculate company units from matching products
-        let companyUnits = 0;
-        companyCases.forEach(caseItem => {
-            const products = caseProductsMap.get(caseItem.id) || [];
-            products.filter(product => {
-                if (!product.is_company_product) return false;
-                if (companyCompany && (product.company_name || '') !== companyCompany) return false;
-                if (companyCategory && (product.category || '') !== companyCategory) return false;
-                if (companySubCategory && (product.sub_category || '') !== companySubCategory) return false;
-                if (companyProduct && String(product.product_id) !== companyProduct && product.product_name !== companyProduct) return false;
-                return true;
-            }).forEach(p => companyUnits += p.units || 0);
-        });
-
-        labels = ['Company'];
-        data = [companyUnits];
-    } else if (hasCompetitorFilters) {
-        // Only competitor row has filters - show competitor units
-        // Get all competitor filter values
-        const competitorCompany = document.getElementById('dashboard-filter-competitor-company')?.value || '';
-        const competitorCategory = document.getElementById('dashboard-filter-competitor-category')?.value || '';
-        const competitorSubCategory = document.getElementById('dashboard-filter-competitor-subcategory')?.value || '';
-        const competitorProduct = document.getElementById('dashboard-filter-competitor-product')?.value || '';
-
-        // Calculate competitor units from matching products
-        let competitorUnits = 0;
-        competitorCases.forEach(caseItem => {
-            const products = caseProductsMap.get(caseItem.id) || [];
-            products.filter(product => {
-                if (product.is_company_product) return false;
-                if (competitorCompany && (product.company_name || '') !== competitorCompany) return false;
-                if (competitorCategory && (product.category || '') !== competitorCategory) return false;
-                if (competitorSubCategory && (product.sub_category || '') !== competitorSubCategory) return false;
-                if (competitorProduct && String(product.product_id) !== competitorProduct && product.product_name !== competitorProduct) return false;
-                return true;
-            }).forEach(p => competitorUnits += p.units || 0);
-        });
-
-        labels = ['Competitor'];
-        data = [competitorUnits];
+        if (ctx.companyType === 'company') {
+            labels = ['Company'];
+            data = [companyUnits];
+        } else if (ctx.companyType === 'competitor') {
+            labels = ['Competitor'];
+            data = [competitorUnits];
+        } else if (ctx.hasCompanyFilters && ctx.hasCompetitorFilters) {
+            labels = ['Company', 'Competitor'];
+            data = [companyUnits, competitorUnits];
+        } else if (ctx.hasCompanyFilters) {
+            labels = ['Company'];
+            data = [companyUnits];
+        } else if (ctx.hasCompetitorFilters) {
+            labels = ['Competitor'];
+            data = [competitorUnits];
+        } else {
+            labels = ['Company', 'Competitor'];
+            data = [companyUnits, competitorUnits];
+        }
     } else {
-        // No dual-row filters - use standard calculation
+        // No dual-row/company-type filters - use standard calculation
         const result = calculateUnitsMarketShare(cases, caseProductsMap);
         labels = result.labels;
         data = result.data;
@@ -5788,42 +5824,7 @@ function renderUnitsPerCategoryChart(caseProducts, cases, caseProductsMap) {
     const canvas = document.getElementById('chartUnitsPerCategory');
     if (!canvas) return;
 
-    // Get company type filter
-    const companyType = document.getElementById('dashboard-filter-company-type')?.value || '';
-
-    // Get dual-row filter values to filter products
-    const companyCompany = document.getElementById('dashboard-filter-company-company')?.value || '';
-    const companyCategory = document.getElementById('dashboard-filter-company-category')?.value || '';
-    const companySubCategory = document.getElementById('dashboard-filter-company-sub-category')?.value || '';
-    const companyProduct = document.getElementById('dashboard-filter-company-product')?.value || '';
-
-    const competitorCompany = document.getElementById('dashboard-filter-competitor-company')?.value || '';
-    const competitorCategory = document.getElementById('dashboard-filter-competitor-category')?.value || '';
-    const competitorSubCategory = document.getElementById('dashboard-filter-competitor-sub-category')?.value || '';
-    const competitorProduct = document.getElementById('dashboard-filter-competitor-product')?.value || '';
-
-    const hasCompanyFilters = companyCompany || companyCategory || companySubCategory || companyProduct;
-    const hasCompetitorFilters = competitorCompany || competitorCategory || competitorSubCategory || competitorProduct;
-
-    // Filter products based on dual-row selections
-    let filteredProducts = caseProducts;
-    if (hasCompanyFilters || hasCompetitorFilters) {
-        // Get case IDs that match the filters
-        const { companyCases, competitorCases } = getDualRowCaseSets(cases, caseProductsMap);
-        const validCaseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
-
-        // Filter products to only those in valid cases
-        filteredProducts = caseProducts.filter(p => validCaseIds.has(p.case_id));
-    }
-
-    // Filter by company type if selected
-    if (companyType === 'company') {
-        // Only show categories from company products
-        filteredProducts = filteredProducts.filter(p => p.is_company_product);
-    } else if (companyType === 'competitor') {
-        // Only show categories from competitor products
-        filteredProducts = filteredProducts.filter(p => !p.is_company_product);
-    }
+    const filteredProducts = getDashboardFilteredProducts(cases, caseProductsMap);
 
     const { labels, data } = calculateUnitsByCategory(filteredProducts);
 
@@ -5862,18 +5863,11 @@ function renderUnitsPerCompanyChart(cases, caseProductsMap) {
     const canvas = document.getElementById('chartUnitsPerCompany');
     if (!canvas) return;
 
-    // Get dual-row aware case sets
-    const { companyCases, competitorCases, hasCompanyFilters, hasCompetitorFilters } = getDualRowCaseSets(cases, caseProductsMap);
+    const filteredProducts = getDashboardFilteredProducts(cases, caseProductsMap);
+    const filteredCaseProductsMap = buildCaseProductsMapFromProducts(filteredProducts);
+    const filteredCases = cases.filter((caseItem) => filteredCaseProductsMap.has(caseItem.id));
 
-    // Use filtered cases if dual-row filters are active
-    let filteredCases = cases;
-    if (hasCompanyFilters || hasCompetitorFilters) {
-        // Combine company and competitor cases (union)
-        const caseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
-        filteredCases = cases.filter(c => caseIds.has(c.id));
-    }
-
-    const { labels, fullLabels, datasets } = calculateUnitsPerCompanyStacked(filteredCases, caseProductsMap);
+    const { labels, fullLabels, datasets } = calculateUnitsPerCompanyStacked(filteredCases, filteredCaseProductsMap);
 
     destroyChart(state.charts.unitsPerCompany);
     state.charts.unitsPerCompany = buildBarChart(canvas, {
@@ -6108,18 +6102,8 @@ function renderUnitsByPSChart(cases, caseProductsMap) {
     const canvas = document.getElementById('chartUnitsPerPS');
     if (!canvas) return;
 
-    // Get dual-row aware case sets
-    const { companyCases, competitorCases, hasCompanyFilters, hasCompetitorFilters } = getDualRowCaseSets(cases, caseProductsMap);
-
-    // Use filtered cases if dual-row filters are active
-    let filteredCases = cases;
-    if (hasCompanyFilters || hasCompetitorFilters) {
-        // Combine company and competitor cases (union)
-        const caseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
-        filteredCases = cases.filter(c => caseIds.has(c.id));
-    }
-
-    const { labels, data } = calculateUnitsByProductSpecialist(filteredCases);
+    const filteredProducts = getDashboardFilteredProducts(cases, caseProductsMap);
+    const { labels, data } = calculateUnitsByProductSpecialistFromProducts(cases, filteredProducts);
 
     destroyChart(state.charts.unitsByPS);
     state.charts.unitsByPS = buildBarChart(canvas, {
@@ -6128,7 +6112,14 @@ function renderUnitsByPSChart(cases, caseProductsMap) {
             label: 'Units',
             data,
             backgroundColor: 'rgba(168,85,247,0.8)'
-        }]
+        }],
+        options: {
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
     });
 }
 
