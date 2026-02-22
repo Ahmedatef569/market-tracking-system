@@ -2922,25 +2922,11 @@ function renderDMCCasesByProductChart(cases, caseProductsMap) {
     const canvas = document.getElementById('psChartDMCCasesByProduct');
     if (!canvas) return;
 
-    // Get dual-row filter values to filter cases
-    const hasCompanyFilters = document.getElementById('ps-dashboard-filter-company-company')?.value ||
-                              document.getElementById('ps-dashboard-filter-company-category')?.value ||
-                              document.getElementById('ps-dashboard-filter-company-sub-category')?.value ||
-                              document.getElementById('ps-dashboard-filter-company-product')?.value;
-    const hasCompetitorFilters = document.getElementById('ps-dashboard-filter-competitor-company')?.value ||
-                                 document.getElementById('ps-dashboard-filter-competitor-category')?.value ||
-                                 document.getElementById('ps-dashboard-filter-competitor-sub-category')?.value ||
-                                 document.getElementById('ps-dashboard-filter-competitor-product')?.value;
+    const filteredProducts = getDashboardFilteredProducts(cases, caseProductsMap);
+    const filteredCaseProductsMap = buildCaseProductsMapFromProducts(filteredProducts);
+    const filteredCases = cases.filter((caseItem) => filteredCaseProductsMap.has(caseItem.id));
 
-    // Filter cases based on dual-row selections
-    let filteredCases = cases;
-    if (hasCompanyFilters || hasCompetitorFilters) {
-        const { companyCases, competitorCases } = getDualRowCaseSets(cases, caseProductsMap);
-        const validCaseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
-        filteredCases = cases.filter(c => validCaseIds.has(c.id));
-    }
-
-    const { allLabels, allData, totalProducts } = calculateDMCCasesByProduct(filteredCases, caseProductsMap);
+    const { allLabels, allData, totalProducts } = calculateDMCCasesByProduct(filteredCases, filteredCaseProductsMap);
 
     // Pagination
     const page = state.chartPagination.dmcCasesPage;
@@ -2988,25 +2974,11 @@ function renderCompetitorCasesByProductChart(cases, caseProductsMap) {
     const canvas = document.getElementById('psChartCompetitorCasesByProduct');
     if (!canvas) return;
 
-    // Get dual-row filter values to filter cases
-    const hasCompanyFilters = document.getElementById('ps-dashboard-filter-company-company')?.value ||
-                              document.getElementById('ps-dashboard-filter-company-category')?.value ||
-                              document.getElementById('ps-dashboard-filter-company-sub-category')?.value ||
-                              document.getElementById('ps-dashboard-filter-company-product')?.value;
-    const hasCompetitorFilters = document.getElementById('ps-dashboard-filter-competitor-company')?.value ||
-                                 document.getElementById('ps-dashboard-filter-competitor-category')?.value ||
-                                 document.getElementById('ps-dashboard-filter-competitor-sub-category')?.value ||
-                                 document.getElementById('ps-dashboard-filter-competitor-product')?.value;
+    const filteredProducts = getDashboardFilteredProducts(cases, caseProductsMap);
+    const filteredCaseProductsMap = buildCaseProductsMapFromProducts(filteredProducts);
+    const filteredCases = cases.filter((caseItem) => filteredCaseProductsMap.has(caseItem.id));
 
-    // Filter cases based on dual-row selections
-    let filteredCases = cases;
-    if (hasCompanyFilters || hasCompetitorFilters) {
-        const { companyCases, competitorCases } = getDualRowCaseSets(cases, caseProductsMap);
-        const validCaseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
-        filteredCases = cases.filter(c => validCaseIds.has(c.id));
-    }
-
-    const { allLabels, allData, totalProducts } = calculateCompetitorCasesByProduct(filteredCases, caseProductsMap);
+    const { allLabels, allData, totalProducts } = calculateCompetitorCasesByProduct(filteredCases, filteredCaseProductsMap);
 
     // Pagination
     const page = state.chartPagination.competitorCasesPage;
@@ -3054,23 +3026,7 @@ function renderDMCUnitsByProductChart(caseProducts, cases, caseProductsMap) {
     const canvas = document.getElementById('psChartDMCUnitsByProduct');
     if (!canvas) return;
 
-    // Get dual-row filter values to filter products
-    const hasCompanyFilters = document.getElementById('ps-dashboard-filter-company-company')?.value ||
-                              document.getElementById('ps-dashboard-filter-company-category')?.value ||
-                              document.getElementById('ps-dashboard-filter-company-sub-category')?.value ||
-                              document.getElementById('ps-dashboard-filter-company-product')?.value;
-    const hasCompetitorFilters = document.getElementById('ps-dashboard-filter-competitor-company')?.value ||
-                                 document.getElementById('ps-dashboard-filter-competitor-category')?.value ||
-                                 document.getElementById('ps-dashboard-filter-competitor-sub-category')?.value ||
-                                 document.getElementById('ps-dashboard-filter-competitor-product')?.value;
-
-    // Filter products based on dual-row selections
-    let filteredProducts = caseProducts;
-    if (hasCompanyFilters || hasCompetitorFilters) {
-        const { companyCases, competitorCases } = getDualRowCaseSets(cases, caseProductsMap);
-        const validCaseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
-        filteredProducts = caseProducts.filter(p => validCaseIds.has(p.case_id));
-    }
+    const filteredProducts = getDashboardFilteredProducts(cases, caseProductsMap);
 
     const { allLabels, allData, totalProducts } = calculateDMCUnitsByProduct(filteredProducts);
 
@@ -3120,23 +3076,7 @@ function renderCompetitorUnitsByProductChart(caseProducts, cases, caseProductsMa
     const canvas = document.getElementById('psChartCompetitorUnitsByProduct');
     if (!canvas) return;
 
-    // Get dual-row filter values to filter products
-    const hasCompanyFilters = document.getElementById('ps-dashboard-filter-company-company')?.value ||
-                              document.getElementById('ps-dashboard-filter-company-category')?.value ||
-                              document.getElementById('ps-dashboard-filter-company-sub-category')?.value ||
-                              document.getElementById('ps-dashboard-filter-company-product')?.value;
-    const hasCompetitorFilters = document.getElementById('ps-dashboard-filter-competitor-company')?.value ||
-                                 document.getElementById('ps-dashboard-filter-competitor-category')?.value ||
-                                 document.getElementById('ps-dashboard-filter-competitor-sub-category')?.value ||
-                                 document.getElementById('ps-dashboard-filter-competitor-product')?.value;
-
-    // Filter products based on dual-row selections
-    let filteredProducts = caseProducts;
-    if (hasCompanyFilters || hasCompetitorFilters) {
-        const { companyCases, competitorCases } = getDualRowCaseSets(cases, caseProductsMap);
-        const validCaseIds = new Set([...companyCases.map(c => c.id), ...competitorCases.map(c => c.id)]);
-        filteredProducts = caseProducts.filter(p => validCaseIds.has(p.case_id));
-    }
+    const filteredProducts = getDashboardFilteredProducts(cases, caseProductsMap);
 
     const { allLabels, allData, totalProducts } = calculateCompetitorUnitsByProduct(filteredProducts);
 

@@ -698,6 +698,14 @@ a:hover {
     white-space: nowrap;
 }
 
+.chart-page-info {
+    color: var(--text-secondary) !important;
+}
+
+body[data-theme='light'] .chart-page-info {
+    color: #1f2937 !important;
+}
+
 .app-shell[data-role='admin'] .account-chip small,
 .app-shell[data-role='manager'] .account-chip small,
 .app-shell[data-role='employee'] .account-chip small {
