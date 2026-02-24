@@ -1,11 +1,14 @@
 import { supabase, handleSupabase } from './supabaseClient.js';
 import { setSession, getSession, getRoleHome, hydrateSession, recordLastLogin } from './session.js';
 import { showAlert, hideAlert, setLoadingState } from './utils.js';
+import { initAutoVersionCheck } from './versionCheck.js';
 
 const form = document.getElementById('login-form');
 const feedback = document.getElementById('login-feedback');
 const submitButton = form.querySelector('button[type="submit"]');
 const yearEl = document.getElementById('year');
+
+initAutoVersionCheck({ resourcePath: 'js/login.js', storageKey: 'mts-version-token:login' });
 
 if (yearEl) {
     yearEl.textContent = new Date().getFullYear();

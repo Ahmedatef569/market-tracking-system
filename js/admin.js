@@ -2,6 +2,7 @@ import { supabase, handleSupabase } from './supabaseClient.js';
 import { requireAuth, logout, updatePassword, hydrateSession } from './session.js';
 import { ROLES, APPROVAL_STATUS, ACCOUNT_TYPES } from './constants.js';
 import { showWelcomePopup } from './welcomePopup.js';
+import { initAutoVersionCheck } from './versionCheck.js';
 import {
     formatDate,
     formatNumber,
@@ -58,6 +59,7 @@ import {
 } from './caseAnalytics.js';
 
 ensureThemeApplied();
+initAutoVersionCheck({ resourcePath: 'js/admin.js', storageKey: 'mts-version-token:admin' });
 
 const state = {
     session: null,
