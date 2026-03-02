@@ -60,6 +60,15 @@ import {
 ensureThemeApplied();
 initAutoVersionCheck({ resourcePath: 'js/employee.js', storageKey: 'mts-version-token:employee' });
 
+function escapeOptionText(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 
 const state = {
     session: null,
@@ -553,7 +562,7 @@ function setupCaseFilters() {
             )].sort();
 
             companySubCategorySelect.innerHTML = '<option value="">All Sub Categories</option>' +
-                filteredSubCategories.map(sub => `<option value="${sub}">${sub}</option>`).join('');
+                filteredSubCategories.map(sub => `<option value="${escapeOptionText(sub)}">${escapeOptionText(sub)}</option>`).join('');
             if (filteredSubCategories.includes(selectedSubCategory)) {
                 companySubCategorySelect.value = selectedSubCategory;
             }
@@ -630,7 +639,7 @@ function setupCaseFilters() {
             )].sort();
 
             competitorSubCategorySelect.innerHTML = '<option value="">All Sub Categories</option>' +
-                filteredSubCategories.map(sub => `<option value="${sub}">${sub}</option>`).join('');
+                filteredSubCategories.map(sub => `<option value="${escapeOptionText(sub)}">${escapeOptionText(sub)}</option>`).join('');
             if (filteredSubCategories.includes(selectedSubCategory)) {
                 competitorSubCategorySelect.value = selectedSubCategory;
             }
@@ -712,7 +721,7 @@ function setupCaseFilters() {
         }
         if (companySubCategorySelect) {
             companySubCategorySelect.innerHTML = '<option value="">All Sub Categories</option>' +
-                company.subCategories.map(sub => `<option value="${sub}">${sub}</option>`).join('');
+                company.subCategories.map(sub => `<option value="${escapeOptionText(sub)}">${escapeOptionText(sub)}</option>`).join('');
         }
         if (companyProductSelect) {
             companyProductSelect.innerHTML = '<option value="">All Products</option>' +
@@ -729,7 +738,7 @@ function setupCaseFilters() {
         }
         if (competitorSubCategorySelect) {
             competitorSubCategorySelect.innerHTML = '<option value="">All Sub Categories</option>' +
-                competitor.subCategories.map(sub => `<option value="${sub}">${sub}</option>`).join('');
+                competitor.subCategories.map(sub => `<option value="${escapeOptionText(sub)}">${escapeOptionText(sub)}</option>`).join('');
         }
         if (competitorProductSelect) {
             competitorProductSelect.innerHTML = '<option value="">All Products</option>' +
@@ -1111,7 +1120,7 @@ function setupDashboardFilters() {
             )].sort();
 
             companySubCategorySelect.innerHTML = '<option value="">All Sub Categories</option>' +
-                filteredSubCategories.map(sub => `<option value="${sub}">${sub}</option>`).join('');
+                filteredSubCategories.map(sub => `<option value="${escapeOptionText(sub)}">${escapeOptionText(sub)}</option>`).join('');
             if (filteredSubCategories.includes(selectedSubCategory)) {
                 companySubCategorySelect.value = selectedSubCategory;
             }
@@ -1188,7 +1197,7 @@ function setupDashboardFilters() {
             )].sort();
 
             competitorSubCategorySelect.innerHTML = '<option value="">All Sub Categories</option>' +
-                filteredSubCategories.map(sub => `<option value="${sub}">${sub}</option>`).join('');
+                filteredSubCategories.map(sub => `<option value="${escapeOptionText(sub)}">${escapeOptionText(sub)}</option>`).join('');
             if (filteredSubCategories.includes(selectedSubCategory)) {
                 competitorSubCategorySelect.value = selectedSubCategory;
             }
@@ -1264,7 +1273,7 @@ function setupDashboardFilters() {
         }
         if (companySubCategorySelect) {
             companySubCategorySelect.innerHTML = '<option value="">All Sub Categories</option>' +
-                company.subCategories.map(sub => `<option value="${sub}">${sub}</option>`).join('');
+                company.subCategories.map(sub => `<option value="${escapeOptionText(sub)}">${escapeOptionText(sub)}</option>`).join('');
         }
         if (companyProductSelect) {
             companyProductSelect.innerHTML = '<option value="">All Products</option>' +
@@ -1287,7 +1296,7 @@ function setupDashboardFilters() {
         }
         if (competitorSubCategorySelect) {
             competitorSubCategorySelect.innerHTML = '<option value="">All Sub Categories</option>' +
-                competitor.subCategories.map(sub => `<option value="${sub}">${sub}</option>`).join('');
+                competitor.subCategories.map(sub => `<option value="${escapeOptionText(sub)}">${escapeOptionText(sub)}</option>`).join('');
         }
         if (competitorProductSelect) {
             competitorProductSelect.innerHTML = '<option value="">All Products</option>' +
