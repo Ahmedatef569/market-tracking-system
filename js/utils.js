@@ -245,6 +245,53 @@ export function distinct(values = []) {
     return Array.from(new Set(values.filter(Boolean)));
 }
 
+export async function loadAllPages(fetchPage, options = {}) {
+    const pageSize = Number(options.pageSize || 1000);
+    const maxPages = Number(options.maxPages || 10000);
+    const allRows = [];
+    let offset = 0;
+    let page = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+        page += 1;
+        if (page > maxPages) {
+            throw new Error(`Pagination safety stop reached (${maxPages} pages)`);
+        }
+
+        const rows = await fetchPage(offset, pageSize, page);
+        if (!Array.isArray(rows) || rows.length === 0) {
+            hasMore = false;
+            break;
+        }
+
+        allRows.push(...rows);
+        offset += pageSize;
+        hasMore = rows.length === pageSize;
+    }
+
+    return allRows;
+}
+
+export async function loadAllByIdBatches(ids = [], fetchBatchPage, options = {}) {
+    const idBatchSize = Number(options.idBatchSize || 500);
+    const pageSize = Number(options.pageSize || 1000);
+    const allRows = [];
+
+    if (!Array.isArray(ids) || !ids.length) return allRows;
+
+    for (let i = 0; i < ids.length; i += idBatchSize) {
+        const idBatch = ids.slice(i, i + idBatchSize);
+        const rows = await loadAllPages(
+            (offset, currentPageSize, page) => fetchBatchPage(idBatch, offset, currentPageSize, page, Math.floor(i / idBatchSize) + 1),
+            { pageSize }
+        );
+        if (rows.length) allRows.push(...rows);
+    }
+
+    return allRows;
+}
+
 export function toSentenceCase(text = '') {
     if (!text) return '';
     return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();

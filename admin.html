@@ -64,6 +64,16 @@
                     </span>
                     <span class="text">Database</span>
                 </a>
+                <a href="#" class="nav-link" data-section-target="approvals">
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                            <path d="M12 22c4.5-1 8-5 8-10V5l-8-3-8 3v7c0 5 3.5 9 8 10Z"></path>
+                            <path d="m9 12 2 2 4-4"></path>
+                        </svg>
+                    </span>
+                    <span class="text">Approvals</span>
+                </a>
+                <div class="nav-section-title">Cases Analysis</div>
                 <a href="#" class="nav-link" data-section-target="cases">
                     <span class="icon" aria-hidden="true">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
@@ -76,15 +86,6 @@
                     </span>
                     <span class="text">Cases</span>
                 </a>
-                <a href="#" class="nav-link" data-section-target="approvals">
-                    <span class="icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
-                            <path d="M12 22c4.5-1 8-5 8-10V5l-8-3-8 3v7c0 5 3.5 9 8 10Z"></path>
-                            <path d="m9 12 2 2 4-4"></path>
-                        </svg>
-                    </span>
-                    <span class="text">Approvals</span>
-                </a>
                 <a href="#" class="nav-link" data-section-target="dashboard">
                     <span class="icon" aria-hidden="true">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
@@ -92,6 +93,38 @@
                             <path d="M18 17V9"></path>
                             <path d="M13 17V5"></path>
                             <path d="M8 17v-3"></path>
+                        </svg>
+                    </span>
+                    <span class="text">Dashboard</span>
+                </a>
+                <div class="nav-section-title">Sales Analysis</div>
+                <a href="#" class="nav-link" data-section-target="sales-target">
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                            <path d="M3 17l6-6 4 4 8-8"></path>
+                            <path d="M14 7h7v7"></path>
+                        </svg>
+                    </span>
+                    <span class="text">Target</span>
+                </a>
+                <a href="#" class="nav-link" data-section-target="sales-data">
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                            <path d="M21 15V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9"></path>
+                            <path d="M3 10h18"></path>
+                            <path d="M7 20h10"></path>
+                            <path d="M12 15v5"></path>
+                        </svg>
+                    </span>
+                    <span class="text">Sales Data</span>
+                </a>
+                <a href="#" class="nav-link" data-section-target="sales-dashboard">
+                    <span class="icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                            <path d="M3 3v18h18"></path>
+                            <path d="M7 15h2"></path>
+                            <path d="M11 11h2"></path>
+                            <path d="M15 7h2"></path>
                         </svg>
                     </span>
                     <span class="text">Dashboard</span>
@@ -284,6 +317,78 @@
                     </div>
                     <div class="table-wrapper">
                         <div id="approvals-table"></div>
+                    </div>
+                </section>
+
+                <section class="page-section d-none" data-section="sales-target">
+                    <h2 class="section-title">Sales Target</h2>
+                    <div class="tab-nav mb-4" id="sales-target-tabs" role="tablist">
+                        <button type="button" class="active" data-sales-target-tab="accounts">Accounts</button>
+                        <button type="button" data-sales-target-tab="products">Products</button>
+                    </div>
+                    <div class="sales-target-panel" data-sales-target-tab="accounts">
+                        <div class="stat-cards stat-cards--quad" id="sales-target-accounts-stats"></div>
+                        <div class="filters-bar filters-bar--compact" id="sales-target-accounts-filters"></div>
+                        <div class="table-wrapper">
+                            <div id="sales-target-accounts-table"></div>
+                        </div>
+                    </div>
+                    <div class="sales-target-panel d-none" data-sales-target-tab="products">
+                        <div class="stat-cards stat-cards--wide" id="sales-target-products-stats"></div>
+                        <div class="filters-bar filters-bar--compact" id="sales-target-products-filters"></div>
+                        <div class="table-wrapper">
+                            <div id="sales-target-products-table"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="page-section d-none" data-section="sales-data">
+                    <h2 class="section-title">Sales Data</h2>
+                    <div class="modal-form-host" data-form-id="admin-sales-order-form">
+                        <div class="form-card">
+                            <h3>Add Sales Order</h3>
+                            <form id="admin-sales-order-form" novalidate>
+                                <div class="row g-3"></div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="line-switcher-container mb-3" id="sales-line-switcher"></div>
+                    <div class="d-flex justify-content-end gap-2 mb-3">
+                        <button class="btn btn-gradient" id="admin-add-sales-order-btn" data-open-form="#admin-sales-order-form" data-form-title="Add Sales Order" data-focus-target="select[name='line_id']"><i class="bi bi-plus-circle me-2"></i>Add Sales Order</button>
+                    </div>
+                    <div class="stat-cards stat-cards--wide" id="sales-stat-cards"></div>
+                    <div class="card-glass mb-4 filters-panel collapsed" data-filter-panel="sales">
+                        <div class="filters-panel-header">
+                            <span class="filters-panel-title">Filters</span>
+                            <button class="filters-panel-toggle" type="button" aria-expanded="false" aria-controls="sales-filters-body">
+                                <span class="filters-panel-toggle-label">Show Filters</span>
+                                <span class="filters-panel-toggle-icon">&#9656;</span>
+                            </button>
+                        </div>
+                        <div class="filters-panel-body" id="sales-filters-body">
+                            <div class="filters-bar" id="sales-filters"></div>
+                        </div>
+                    </div>
+                    <div class="table-wrapper">
+                        <div id="sales-table"></div>
+                    </div>
+                </section>
+
+                <section class="page-section d-none" data-section="sales-dashboard">
+                    <h2 class="section-title">Sales Dashboard</h2>
+                    <div class="line-switcher-container mb-3" id="sales-dashboard-line-switcher"></div>
+                    <div class="stat-cards stat-cards--wide" id="sales-dashboard-stat-cards"></div>
+                    <div class="card-glass mb-4 filters-panel collapsed" data-filter-panel="sales-dashboard">
+                        <div class="filters-panel-header">
+                            <span class="filters-panel-title">Filters</span>
+                            <button class="filters-panel-toggle" type="button" aria-expanded="false" aria-controls="sales-dashboard-filters-body">
+                                <span class="filters-panel-toggle-label">Show Filters</span>
+                                <span class="filters-panel-toggle-icon">&#9656;</span>
+                            </button>
+                        </div>
+                        <div class="filters-panel-body" id="sales-dashboard-filters-body">
+                            <div class="filters-bar" id="sales-dashboard-filters"></div>
+                        </div>
                     </div>
                 </section>
 

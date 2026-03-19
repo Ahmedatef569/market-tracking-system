@@ -1,6 +1,6 @@
 import { supabase, handleSupabase } from './supabaseClient.js';
 import { requireAuth, logout, updatePassword, hydrateSession } from './session.js';
-import { ROLES, APPROVAL_STATUS, ACCOUNT_TYPES } from './constants.js';
+import { ROLES, APPROVAL_STATUS, ACCOUNT_TYPES, MAX_PRODUCTS_PER_ORDER } from './constants.js';
 import { showWelcomePopup } from './welcomePopup.js';
 import { initAutoVersionCheck } from './versionCheck.js';
 import {
@@ -21,7 +21,9 @@ import {
     ensureThemeApplied,
     makeSelectSearchable,
     addEnglishOnlyValidation,
-    validateFormEnglishOnly
+    validateFormEnglishOnly,
+    loadAllPages,
+    loadAllByIdBatches
 } from './utils.js';
 import { createTable, tableFormatters, bindTableActions, exportTableToExcel, ensureTabulator } from './tables.js';
 import { applyChartDefaults, resetChartDefaults, buildLineChart, buildBarChart, buildDoughnutChart, buildPieChart, destroyChart } from './charts.js';
@@ -82,6 +84,13 @@ const state = {
     cases: [],
     caseProducts: [],
     caseProductsByCase: new Map(),
+    salesOrders: [],
+    salesOrderItems: [],
+    salesOrderItemsByOrder: new Map(),
+    salesAccountTargets: [],
+    salesProductTargets: [],
+    salesProductPrices: [],
+    adminSalesOrderFormRows: 1,
     approvals: [],
     tables: {},
     charts: {},
@@ -113,6 +122,12 @@ const state = {
             line: '',
             specialist: '',
             accountType: ''
+        },
+        sales: {
+            line: ''
+        },
+        salesDashboard: {
+            line: ''
         }
     },
     autocompletes: {}
@@ -181,6 +196,7 @@ async function init() {
     setupSectionNavigation();
     initFilterPanels();
     setupDatabaseTabs();
+    setupSalesTargetTabs();
     initFormModal({ hostSelector: '.modal-form-host[data-form-id]' });
 
     await loadInitialData();
@@ -280,6 +296,91 @@ function getOldestLine() {
     return sorted[0]?.id || '';
 }
 
+function getSalesOperationalLines() {
+    const specialistLineIds = new Set(
+        (state.employees || [])
+            .filter((emp) => emp.role === ROLES.EMPLOYEE && emp.line_id)
+            .map((emp) => String(emp.line_id))
+    );
+    const accountLineIds = new Set(
+        (state.accounts || [])
+            .filter((acc) => acc.status === APPROVAL_STATUS.APPROVED && acc.line_id)
+            .map((acc) => String(acc.line_id))
+    );
+    const productLineIds = new Set(
+        (state.products || [])
+            .filter((product) => product.line_id && product.is_active !== false)
+            .map((product) => String(product.line_id))
+    );
+
+    return (state.lines || []).filter((line) => {
+        const lineId = String(line.id || '');
+        if (!lineId) return false;
+        const lineName = String(line.name || '').trim().toLowerCase();
+        if (lineName === 'corporate') return false;
+        if (!specialistLineIds.has(lineId)) return false;
+        return accountLineIds.has(lineId) || productLineIds.has(lineId);
+    });
+}
+
+function getOldestSalesLine() {
+    const salesLines = getSalesOperationalLines();
+    if (!salesLines.length) return '';
+    const sorted = [...salesLines].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    return sorted[0]?.id || '';
+}
+
+function ceilStatNumber(value) {
+    const numeric = Number(value || 0);
+    if (!Number.isFinite(numeric)) return 0;
+    return Math.ceil(numeric);
+}
+
+function formatSalesStatValue(value) {
+    return formatNumber(ceilStatNumber(value));
+}
+
+function formatSalesStatPercent(value) {
+    return `${formatNumber(ceilStatNumber(value))}%`;
+}
+
+function getAdminSalesMetricScope(lineId = '', options = {}) {
+    const specialist = options.specialist ?? (document.getElementById('filter-sales-specialist')?.value || '');
+    const manager = options.manager ?? (document.getElementById('filter-sales-manager')?.value || '');
+    const accountType = options.accountType ?? (document.getElementById('filter-sales-account-type')?.value || '');
+    const accountName = options.accountName ?? ((document.getElementById('filter-sales-account-name')?.value || '').trim().toLowerCase());
+
+    let scopedAccounts = state.accounts.filter((acc) => acc.status === APPROVAL_STATUS.APPROVED);
+    if (lineId) scopedAccounts = scopedAccounts.filter((acc) => String(acc.line_id) === String(lineId));
+    if (specialist) scopedAccounts = scopedAccounts.filter((acc) => String(acc.owner_employee_id) === String(specialist));
+    if (accountType) scopedAccounts = scopedAccounts.filter((acc) => acc.account_type === accountType);
+    if (accountName) scopedAccounts = scopedAccounts.filter((acc) => (acc.name || '').toLowerCase().includes(accountName));
+    if (manager) {
+        scopedAccounts = scopedAccounts.filter((acc) => {
+            const owner = state.employeeById?.get(String(acc.owner_employee_id));
+            const dm = owner?.direct_manager_id ? String(owner.direct_manager_id) : '';
+            const lm = owner?.line_manager_id ? String(owner.line_manager_id) : '';
+            return String(manager) === dm || String(manager) === lm;
+        });
+    }
+
+    const accountKeys = new Set(scopedAccounts.map((acc) => `${acc.id}::${acc.owner_employee_id}`));
+    const specialistIds = new Set(scopedAccounts.map((acc) => String(acc.owner_employee_id)).filter(Boolean));
+    if (specialist) specialistIds.add(String(specialist));
+
+    const relevantAccountTargets = state.salesAccountTargets.filter((target) =>
+        accountKeys.has(`${target.account_id || ''}::${target.specialist_id || ''}`)
+    );
+    const relevantProductTargets = state.salesProductTargets.filter((target) => {
+        const targetSpecialistId = String(target.specialist_id || '');
+        if (!specialistIds.has(targetSpecialistId)) return false;
+        if (lineId && String(target.line_id || '') !== String(lineId)) return false;
+        return true;
+    });
+
+    return { relevantAccountTargets, relevantProductTargets };
+}
+
 function setupModals() {
     if (window.bootstrap) {
         const offcanvasEl = document.getElementById(approvalsOffcanvasId);
@@ -340,6 +441,13 @@ function setupDatabaseTabs() {
     initTabNavigation(tabButtons, panels, 'databaseTab', 'products');
 }
 
+function setupSalesTargetTabs() {
+    const tabButtons = Array.from(document.querySelectorAll('#sales-target-tabs button'));
+    const panels = Array.from(document.querySelectorAll('.sales-target-panel'));
+    if (!tabButtons.length || !panels.length) return;
+    initTabNavigation(tabButtons, panels, 'salesTargetTab', 'accounts');
+}
+
 async function loadInitialData() {
     await Promise.all([
         loadLines(),
@@ -351,7 +459,8 @@ async function loadInitialData() {
         loadProducts(),
         loadDoctors(),
         loadAccounts(),
-        loadCases()
+        loadCases(),
+        loadSalesExpansionData()
     ]);
     buildApprovalsDataset();
 }
@@ -363,6 +472,11 @@ function initializeForms() {
     setupAccountForm();
     setupCaseFilters();
     setupApprovalsFilters();
+    setupSalesTargetAccountFilters();
+    setupSalesTargetProductFilters();
+    setupSalesFilters();
+    setupSalesDashboardFilters();
+    setupAdminSalesOrderForm();
     setupDashboardFilters();
     setupExportButtons();
     setupProductBulkUpload();
@@ -377,6 +491,9 @@ function renderAll() {
     renderDoctorsSection({ refreshFilters: true });
     renderAccountsSection({ refreshFilters: true });
     renderCasesSection();
+    renderSalesTargetSection();
+    renderSalesDataSection();
+    renderSalesDashboardSection();
     renderApprovalsTable();
     renderDashboard();
 }
@@ -467,7 +584,7 @@ async function loadLines() {
     const data = await handleSupabase(
         supabase
             .from('lines')
-            .select('id, name, description')
+            .select('id, name, description, created_at')
             .order('name', { ascending: true }),
         'load lines'
     );
@@ -641,74 +758,37 @@ async function loadAccounts() {
     });
 }
 async function loadCases() {
-    // Load all cases in batches to avoid 1000-row limit
-    const allCases = [];
-    const BATCH_SIZE = 1000;
-    let offset = 0;
-    let hasMore = true;
-
-    while (hasMore) {
-        const batch = await handleSupabase(
+    state.cases = await loadAllPages(
+        (offset, pageSize, page) => handleSupabase(
             supabase
                 .from('v_case_details')
                 .select('*')
                 .neq('status', APPROVAL_STATUS.REJECTED)
                 .order('case_date', { ascending: false })
-                .range(offset, offset + BATCH_SIZE - 1),
-            `load cases batch ${offset / BATCH_SIZE + 1}`
-        );
+                .order('id', { ascending: false })
+                .range(offset, offset + pageSize - 1),
+            `load cases page ${page}`
+        ),
+        { pageSize: 1000 }
+    );
 
-        if (batch && batch.length > 0) {
-            allCases.push(...batch);
-            offset += BATCH_SIZE;
-            hasMore = batch.length === BATCH_SIZE;
-        } else {
-            hasMore = false;
-        }
-    }
+    const caseIds = state.cases.map((item) => item.id);
+    state.caseProducts = await loadAllByIdBatches(
+        caseIds,
+        (idBatch, offset, pageSize, page, batchIndex) => handleSupabase(
+            supabase
+                .from('case_products')
+                .select('case_id, product_id, product_name, company_name, category, sub_category, is_company_product, units, sequence')
+                .in('case_id', idBatch)
+                .order('case_id', { ascending: true })
+                .order('sequence', { ascending: true })
+                .order('product_id', { ascending: true })
+                .range(offset, offset + pageSize - 1),
+            `load case products batch ${batchIndex} page ${page}`
+        ),
+        { idBatchSize: 500, pageSize: 1000 }
+    );
 
-    state.cases = allCases;
-
-    // Load ALL products for these cases using .in() with batching
-    // Problem: .in() has ~1000 item limit, so we batch the case IDs
-    // Also: Each .in() query returns max 1000 rows, so we use .range() too
-    const allProducts = [];
-    if (state.cases.length > 0) {
-        const caseIds = state.cases.map(c => c.id);
-        const CASE_ID_BATCH_SIZE = 500; // Batch case IDs to avoid .in() limit
-
-        for (let i = 0; i < caseIds.length; i += CASE_ID_BATCH_SIZE) {
-            const batchIds = caseIds.slice(i, i + CASE_ID_BATCH_SIZE);
-
-            // For each batch of case IDs, load ALL products using .range() pagination
-            let offset = 0;
-            let hasMore = true;
-            const PRODUCT_BATCH_SIZE = 1000;
-
-            while (hasMore) {
-                const products = await handleSupabase(
-                    supabase
-                        .from('case_products')
-                        .select('case_id, product_id, product_name, company_name, category, sub_category, is_company_product, units, sequence')
-                        .in('case_id', batchIds)
-                        .order('case_id', { ascending: true })
-                        .order('sequence', { ascending: true })
-                        .range(offset, offset + PRODUCT_BATCH_SIZE - 1),
-                    `load case products for case batch ${Math.floor(i / CASE_ID_BATCH_SIZE) + 1}, product page ${offset / PRODUCT_BATCH_SIZE + 1}`
-                );
-
-                if (products && products.length > 0) {
-                    allProducts.push(...products);
-                    offset += PRODUCT_BATCH_SIZE;
-                    hasMore = products.length === PRODUCT_BATCH_SIZE;
-                } else {
-                    hasMore = false;
-                }
-            }
-        }
-    }
-
-    state.caseProducts = allProducts;
     state.caseProductsByCase = groupCaseProducts(state.caseProducts);
 
     // Debug logging
@@ -746,6 +826,7 @@ function buildApprovalsDataset() {
     const pendingDoctors = state.doctors.filter((doctor) => doctor.status !== APPROVAL_STATUS.APPROVED && doctor.status !== APPROVAL_STATUS.REJECTED);
     const pendingAccounts = state.accounts.filter((account) => account.status !== APPROVAL_STATUS.APPROVED && account.status !== APPROVAL_STATUS.REJECTED);
     const pendingCases = state.cases.filter((item) => item.status !== APPROVAL_STATUS.APPROVED && item.status !== APPROVAL_STATUS.REJECTED);
+    const pendingOrders = state.salesOrders.filter((item) => item.status !== APPROVAL_STATUS.APPROVED && item.status !== APPROVAL_STATUS.REJECTED);
 
     state.approvals = [
         ...pendingDoctors.map((doctor) => ({
@@ -783,6 +864,18 @@ function buildApprovalsDataset() {
             status: caseItem.status,
             created_at: caseItem.created_at,
             payload: caseItem
+        })),
+        ...pendingOrders.map((orderItem) => ({
+            id: orderItem.id,
+            type: 'order',
+            name: orderItem.order_code || `Order ${String(orderItem.id).slice(0, 6)}`,
+            ownerName: orderItem.specialist_name || orderItem.submitted_by_name,
+            submittedBy: orderItem.submitted_by_name,
+            lineName: orderItem.line_name || '',
+            lineId: orderItem.line_id || '',
+            status: orderItem.status,
+            created_at: orderItem.created_at,
+            payload: orderItem
         }))
     ];
 }
@@ -3929,6 +4022,8 @@ function reviewApproval(record) {
         populateAccountForm(record.id);
     } else if (record.type === 'case') {
         populateCaseReview(record.id, record.payload, true);
+    } else if (record.type === 'order') {
+        populateSalesOrderReview(record.id, record.payload, true);
     }
 }
 
@@ -4029,7 +4124,41 @@ async function processApproval(record, approve = true) {
             await removeAdminNotification('case', record.id);
         }
 
-        const targetEmployeeId = payload.owner_employee_id || payload.submitted_by_id;
+        if (record.type === 'order') {
+            if (approve) {
+                await handleSupabase(
+                    supabase
+                        .from('sales_orders')
+                        .update({
+                            status: APPROVAL_STATUS.APPROVED,
+                            admin_id: state.session.employeeId,
+                            admin_comment: comment,
+                            approved_at: new Date().toISOString(),
+                            rejected_at: null
+                        })
+                        .eq('id', record.id),
+                    'update sales order approval'
+                );
+            } else {
+                await handleSupabase(
+                    supabase
+                        .from('sales_order_items')
+                        .delete()
+                        .eq('sales_order_id', record.id),
+                    'delete rejected sales order items'
+                );
+                await handleSupabase(
+                    supabase
+                        .from('sales_orders')
+                        .delete()
+                        .eq('id', record.id),
+                    'delete rejected sales order'
+                );
+            }
+            await removeAdminNotification('order', record.id);
+        }
+
+        const targetEmployeeId = payload.owner_employee_id || payload.submitted_by_id || payload.specialist_id;
         if (targetEmployeeId) {
             const entityLabel = record.type.charAt(0).toUpperCase() + record.type.slice(1);
             if (approve) {
@@ -4037,6 +4166,8 @@ async function processApproval(record, approve = true) {
                 if (record.type === 'case') {
                     const doctorName = payload.doctor_name || 'Unknown';
                     message = `Case request of operator Dr. "${doctorName}" approved`;
+                } else if (record.type === 'order') {
+                    message = `Sales order approved: ${record.name}`;
                 } else {
                     message = `${entityLabel} request approved: ${record.name}`;
                 }
@@ -4052,6 +4183,8 @@ async function processApproval(record, approve = true) {
                 if (record.type === 'case') {
                     const doctorName = payload.doctor_name || 'Unknown';
                     message = `Case request rejected by operator Dr. "${doctorName}".${reason}`;
+                } else if (record.type === 'order') {
+                    message = `Sales order rejected: ${record.name}.${reason}`;
                 } else {
                     message = `${entityLabel} request rejected: ${record.name}.${reason}`;
                 }
@@ -4067,6 +4200,7 @@ async function processApproval(record, approve = true) {
         await loadDoctors();
         await loadAccounts();
         await loadCases();
+        await loadSalesOrders();
         buildApprovalsDataset();
         renderApprovalsTable();
         renderDoctorsSection({ refreshFilters: true });
@@ -4110,6 +4244,7 @@ function setupApprovalsFilters() {
             <option value="doctor">Doctor</option>
             <option value="account">Account</option>
             <option value="case">Case</option>
+            <option value="order">Order</option>
         </select>
         <select class="form-select" id="filter-approval-status">
             <option value="">All Status</option>
@@ -7013,6 +7148,1366 @@ async function notifyEmployee(employeeId, message, entityType, entityId) {
         message
     });
 }
+
+function groupSalesOrderItems(orderItems = []) {
+    const map = new Map();
+    orderItems.forEach((item) => {
+        if (!item?.sales_order_id) return;
+        const bucket = map.get(item.sales_order_id) || [];
+        bucket.push(item);
+        map.set(item.sales_order_id, bucket);
+    });
+    map.forEach((list) => list.sort((a, b) => (a.sequence || 0) - (b.sequence || 0)));
+    return map;
+}
+
+function generateOrderCode() {
+    const now = new Date();
+    return `ORD-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${now.getTime().toString(36).toUpperCase()}`;
+}
+
+async function loadSalesExpansionData() {
+    await Promise.all([loadSalesOrders(), loadSalesTargets()]);
+}
+
+async function loadSalesOrders() {
+    try {
+        state.salesOrders = await loadAllPages(
+            (offset, pageSize, page) => handleSupabase(
+                supabase
+                    .from('v_sales_order_details')
+                    .select('*')
+                    .order('order_date', { ascending: false })
+                    .order('id', { ascending: false })
+                    .range(offset, offset + pageSize - 1),
+                `load sales orders page ${page}`
+            ),
+            { pageSize: 1000 }
+        );
+
+        const orderIds = state.salesOrders.map((order) => order.id);
+        state.salesOrderItems = await loadAllByIdBatches(
+            orderIds,
+            (idBatch, offset, pageSize, page, batchIndex) => handleSupabase(
+                supabase
+                    .from('sales_order_items')
+                    .select('*')
+                    .in('sales_order_id', idBatch)
+                    .order('sales_order_id', { ascending: true })
+                    .order('sequence', { ascending: true })
+                    .order('id', { ascending: true })
+                    .range(offset, offset + pageSize - 1),
+                `load sales order items batch ${batchIndex} page ${page}`
+            ),
+            { idBatchSize: 500, pageSize: 1000 }
+        );
+
+        state.salesOrderItemsByOrder = groupSalesOrderItems(state.salesOrderItems);
+    } catch (error) {
+        console.warn('Sales orders unavailable:', error?.message || error);
+        state.salesOrders = [];
+        state.salesOrderItems = [];
+        state.salesOrderItemsByOrder = new Map();
+    }
+}
+
+async function loadSalesTargets() {
+    try {
+        const [accountTargets, productTargets, prices] = await Promise.all([
+            loadAllPages(
+                (offset, pageSize, page) => handleSupabase(
+                    supabase
+                        .from('sales_account_targets')
+                        .select('*')
+                        .order('id', { ascending: true })
+                        .range(offset, offset + pageSize - 1),
+                    `load sales account targets page ${page}`
+                ),
+                { pageSize: 1000 }
+            ),
+            loadAllPages(
+                (offset, pageSize, page) => handleSupabase(
+                    supabase
+                        .from('sales_product_targets')
+                        .select('*')
+                        .order('id', { ascending: true })
+                        .range(offset, offset + pageSize - 1),
+                    `load sales product targets page ${page}`
+                ),
+                { pageSize: 1000 }
+            ),
+            loadAllPages(
+                (offset, pageSize, page) => handleSupabase(
+                    supabase
+                        .from('sales_product_prices')
+                        .select('*')
+                        .order('product_id', { ascending: true })
+                        .range(offset, offset + pageSize - 1),
+                    `load sales product prices page ${page}`
+                ),
+                { pageSize: 1000 }
+            )
+        ]);
+        state.salesAccountTargets = accountTargets || [];
+        state.salesProductTargets = productTargets || [];
+        state.salesProductPrices = prices || [];
+    } catch (error) {
+        console.warn('Sales targets unavailable:', error?.message || error);
+        state.salesAccountTargets = [];
+        state.salesProductTargets = [];
+        state.salesProductPrices = [];
+    }
+}
+
+function setupSalesOrderButton() {}
+
+function setupAdminSalesOrderForm() {
+    const container = document.querySelector('#admin-sales-order-form .row');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="col-12">
+            <div id="admin-sales-order-feedback" class="alert-feedback d-none"></div>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Line</label>
+            <select class="form-select" name="line_id" required>
+                <option value="">Select line</option>
+                ${getSalesOperationalLines().map((line) => `<option value="${line.id}">${escapeOptionText(line.name)}</option>`).join('')}
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Product Specialist</label>
+            <select class="form-select" name="specialist_id" required>
+                <option value="">Select product specialist</option>
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Account Name</label>
+            <select class="form-select" name="account_id" required>
+                <option value="">Select account</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Order Date</label>
+            <input type="date" class="form-control" name="order_date" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Order Type</label>
+            <select class="form-select" name="order_type" required>
+                <option value="company" selected>Company Order</option>
+                <option value="competitor">Competitor Order</option>
+            </select>
+        </div>
+        <div class="col-12">
+            <label class="form-label">Products</label>
+            <div id="admin-sales-order-products" class="d-grid gap-3"></div>
+            <div class="d-flex justify-content-between mt-2">
+                <button type="button" class="btn btn-outline-ghost" id="admin-sales-order-add-product">Add Product</button>
+                <button type="button" class="btn btn-outline-ghost" id="admin-sales-order-remove-product">Remove Product</button>
+            </div>
+        </div>
+        <div class="col-12">
+            <label class="form-label">Comments</label>
+            <textarea class="form-control" name="notes" rows="2"></textarea>
+        </div>
+        <div class="col-12 d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-ghost" id="admin-sales-order-reset">Reset</button>
+            <button type="submit" class="btn btn-gradient">Submit Order</button>
+        </div>
+    `;
+
+    const form = document.getElementById('admin-sales-order-form');
+    if (!form) return;
+    const feedback = document.getElementById('admin-sales-order-feedback');
+    const lineSelect = form.querySelector('select[name="line_id"]');
+    const specialistSelect = form.querySelector('select[name="specialist_id"]');
+    const accountSelect = form.querySelector('select[name="account_id"]');
+    const orderTypeSelect = form.querySelector('select[name="order_type"]');
+    const orderDateInput = form.querySelector('input[name="order_date"]');
+
+    makeSelectSearchable?.(specialistSelect);
+    makeSelectSearchable?.(accountSelect);
+
+    const resetForm = () => {
+        form.reset();
+        if (orderDateInput) orderDateInput.value = new Date().toISOString().slice(0, 10);
+        const oldestLine = getOldestSalesLine();
+        if (lineSelect && oldestLine) lineSelect.value = oldestLine;
+        state.adminSalesOrderFormRows = 1;
+        populateAdminSalesOrderSpecialists();
+        renderAdminSalesOrderProductRows();
+        hideAlert(feedback);
+    };
+
+    form.addEventListener('submit', handleAdminSalesOrderSubmit);
+    form.addEventListener('mts:form-open', () => resetForm());
+    form.addEventListener('mts:form-close', () => hideAlert(feedback));
+    form.querySelector('#admin-sales-order-reset')?.addEventListener('click', resetForm);
+    form.querySelector('#admin-sales-order-add-product')?.addEventListener('click', () => {
+        if (state.adminSalesOrderFormRows < MAX_PRODUCTS_PER_ORDER) {
+            state.adminSalesOrderFormRows += 1;
+            renderAdminSalesOrderProductRows();
+        }
+    });
+    form.querySelector('#admin-sales-order-remove-product')?.addEventListener('click', () => {
+        if (state.adminSalesOrderFormRows > 1) {
+            state.adminSalesOrderFormRows -= 1;
+            renderAdminSalesOrderProductRows();
+        }
+    });
+    lineSelect?.addEventListener('change', () => {
+        populateAdminSalesOrderSpecialists();
+        renderAdminSalesOrderProductRows();
+    });
+    specialistSelect?.addEventListener('change', () => {
+        populateAdminSalesOrderAccounts();
+    });
+    orderTypeSelect?.addEventListener('change', () => {
+        renderAdminSalesOrderProductRows();
+    });
+
+    resetForm();
+}
+
+function populateAdminSalesOrderSpecialists(selectedId = '') {
+    const form = document.getElementById('admin-sales-order-form');
+    if (!form) return;
+    const lineId = form.querySelector('select[name="line_id"]')?.value || '';
+    const specialistSelect = form.querySelector('select[name="specialist_id"]');
+    if (!specialistSelect) return;
+    const specialists = state.employees
+        .filter((emp) => emp.role === ROLES.EMPLOYEE && (!lineId || emp.line_id === lineId))
+        .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+    specialistSelect.innerHTML = `
+        <option value="">Select product specialist</option>
+        ${specialists.map((emp) => `<option value="${emp.id}">${escapeOptionText(emp.full_name || '')}</option>`).join('')}
+    `;
+    if (selectedId && specialists.some((emp) => String(emp.id) === String(selectedId))) {
+        specialistSelect.value = String(selectedId);
+    }
+    makeSelectSearchable?.(specialistSelect);
+    populateAdminSalesOrderAccounts();
+}
+
+function populateAdminSalesOrderAccounts(selectedId = '') {
+    const form = document.getElementById('admin-sales-order-form');
+    if (!form) return;
+    const lineId = form.querySelector('select[name="line_id"]')?.value || '';
+    const specialistId = form.querySelector('select[name="specialist_id"]')?.value || '';
+    const accountSelect = form.querySelector('select[name="account_id"]');
+    if (!accountSelect) return;
+    let accounts = state.accounts.filter((acc) => acc.status === APPROVAL_STATUS.APPROVED && (!lineId || acc.line_id === lineId));
+    if (specialistId) accounts = accounts.filter((acc) => String(acc.owner_employee_id) === String(specialistId));
+    accounts = accounts.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    accountSelect.innerHTML = `
+        <option value="">Select account</option>
+        ${accounts.map((acc) => `<option value="${acc.id}">${escapeOptionText(acc.name || '')}</option>`).join('')}
+    `;
+    if (selectedId && accounts.some((acc) => String(acc.id) === String(selectedId))) {
+        accountSelect.value = String(selectedId);
+    }
+    makeSelectSearchable?.(accountSelect);
+}
+
+function getAdminSalesFormProducts() {
+    const form = document.getElementById('admin-sales-order-form');
+    if (!form) return [];
+    const lineId = form.querySelector('select[name="line_id"]')?.value || '';
+    const orderType = form.querySelector('select[name="order_type"]')?.value || 'company';
+    return state.products.filter((product) => {
+        if (lineId && product.line_id !== lineId) return false;
+        return orderType === 'company' ? Boolean(product.is_company_product) : !product.is_company_product;
+    });
+}
+
+function getAdminProductDefaultPrice(productId) {
+    return Number(state.salesProductPrices.find((price) => String(price.product_id) === String(productId))?.unit_price || 0);
+}
+
+function renderAdminSalesOrderProductRows() {
+    const form = document.getElementById('admin-sales-order-form');
+    const container = document.getElementById('admin-sales-order-products');
+    if (!form || !container) return;
+    const orderType = form.querySelector('select[name="order_type"]')?.value || 'company';
+
+    const preserved = new Map();
+    container.querySelectorAll('[data-admin-sales-row]').forEach((rowEl) => {
+        const row = Number(rowEl.dataset.adminSalesRow);
+        preserved.set(row, {
+            companyId: rowEl.querySelector(`[name="order_company_${row}"]`)?.value || '',
+            productId: rowEl.querySelector(`[name="order_product_${row}"]`)?.value || '',
+            units: rowEl.querySelector(`[name="order_units_${row}"]`)?.value || '0',
+            price: rowEl.querySelector(`[name="order_price_${row}"]`)?.value || ''
+        });
+    });
+
+    const products = getAdminSalesFormProducts();
+    const companies = distinct(products.map((product) => product.company_id))
+        .map((companyId) => {
+            const company = state.companies.find((item) => String(item.id) === String(companyId));
+            return company ? { id: company.id, name: company.name } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    container.innerHTML = '';
+    for (let row = 1; row <= state.adminSalesOrderFormRows; row += 1) {
+        const saved = preserved.get(row) || {};
+        const rowEl = document.createElement('div');
+        rowEl.className = 'row g-3 align-items-end';
+        rowEl.dataset.adminSalesRow = String(row);
+        rowEl.innerHTML = `
+            <div class="col-md-3">
+                <label class="form-label">Company ${row}</label>
+                <select class="form-select" name="order_company_${row}">
+                    <option value="">Select company</option>
+                    ${companies.map((company) => `<option value="${company.id}">${escapeOptionText(company.name)}</option>`).join('')}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Product ${row}</label>
+                <select class="form-select" name="order_product_${row}">
+                    <option value="">Select product</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Units</label>
+                <input type="number" class="form-control" name="order_units_${row}" min="1" value="${escapeOptionText(saved.units || '1')}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Unit Price</label>
+                <input type="number" class="form-control" name="order_price_${row}" min="0" step="0.01" placeholder="${orderType === 'competitor' ? 'Required' : 'Auto from target'}" value="${escapeOptionText(saved.price || '')}" ${orderType === 'competitor' ? 'required' : ''}>
+            </div>
+        `;
+        container.appendChild(rowEl);
+
+        const companySelect = rowEl.querySelector(`[name="order_company_${row}"]`);
+        const productSelect = rowEl.querySelector(`[name="order_product_${row}"]`);
+        const unitsInput = rowEl.querySelector(`[name="order_units_${row}"]`);
+        const priceInput = rowEl.querySelector(`[name="order_price_${row}"]`);
+
+        if (companySelect && saved.companyId) companySelect.value = saved.companyId;
+        populateAdminSalesOrderProductOptions(row, saved.companyId || '', saved.productId || '');
+        if (unitsInput && saved.units) unitsInput.value = saved.units;
+
+        if (priceInput) {
+            if (saved.price !== '') {
+                priceInput.value = saved.price;
+            } else if (orderType === 'company' && saved.productId) {
+                priceInput.value = String(getAdminProductDefaultPrice(saved.productId));
+            } else {
+                priceInput.value = '';
+            }
+        }
+
+        companySelect?.addEventListener('change', () => {
+            populateAdminSalesOrderProductOptions(row, companySelect.value, '');
+            if (priceInput && orderType === 'competitor') priceInput.value = '';
+        });
+        productSelect?.addEventListener('change', () => {
+            if (!priceInput) return;
+            if (orderType === 'company' && productSelect.value) {
+                priceInput.value = String(getAdminProductDefaultPrice(productSelect.value));
+            } else if (orderType === 'competitor') {
+                priceInput.value = '';
+            }
+        });
+    }
+}
+
+function populateAdminSalesOrderProductOptions(rowIndex, companyId, selectedProductId = '') {
+    const form = document.getElementById('admin-sales-order-form');
+    if (!form) return;
+    const orderType = form.querySelector('select[name="order_type"]')?.value || 'company';
+    const productSelect = form.querySelector(`[name="order_product_${rowIndex}"]`);
+    if (!productSelect) return;
+    const products = getAdminSalesFormProducts()
+        .filter((product) => !companyId || String(product.company_id) === String(companyId))
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    productSelect.innerHTML = `
+        <option value="">Select product</option>
+        ${products.map((product) => `<option value="${product.id}">${escapeOptionText(product.name || '')}</option>`).join('')}
+    `;
+    if (selectedProductId && products.some((product) => String(product.id) === String(selectedProductId))) {
+        productSelect.value = String(selectedProductId);
+    }
+    if (orderType === 'company' && !selectedProductId) {
+        const first = products[0];
+        if (first) productSelect.value = String(first.id);
+    }
+}
+
+async function handleAdminSalesOrderSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const feedback = document.getElementById('admin-sales-order-feedback');
+    const submitButton = form.querySelector('button[type="submit"]');
+    hideAlert(feedback);
+
+    const formData = new FormData(form);
+    const payload = Object.fromEntries(formData.entries());
+    if (!payload.line_id || !payload.specialist_id || !payload.account_id || !payload.order_date || !payload.order_type) {
+        showAlert(feedback, 'Line, Product Specialist, Account, Order Date, and Order Type are required.');
+        return;
+    }
+
+    const orderType = payload.order_type;
+    const items = [];
+    for (let row = 1; row <= state.adminSalesOrderFormRows; row += 1) {
+        const productId = payload[`order_product_${row}`];
+        const unitsRaw = payload[`order_units_${row}`];
+        const priceRaw = payload[`order_price_${row}`];
+        if (!productId && !unitsRaw && !priceRaw) continue;
+
+        const units = Number(unitsRaw);
+        if (!productId || Number.isNaN(units) || units <= 0) {
+            showAlert(feedback, `Row ${row}: product and units (> 0) are required.`);
+            return;
+        }
+        if (priceRaw === '' || priceRaw === null || priceRaw === undefined) {
+            showAlert(feedback, `Row ${row}: unit price is required.`);
+            return;
+        }
+        const unitPrice = Number(priceRaw);
+        if (Number.isNaN(unitPrice) || unitPrice < 0) {
+            showAlert(feedback, `Row ${row}: unit price must be 0 or greater.`);
+            return;
+        }
+
+        const product = state.products.find((item) => String(item.id) === String(productId));
+        if (!product) {
+            showAlert(feedback, `Row ${row}: selected product not found.`);
+            return;
+        }
+        if (String(product.line_id) !== String(payload.line_id)) {
+            showAlert(feedback, `Row ${row}: product line mismatch.`);
+            return;
+        }
+        if (orderType === 'company' && !product.is_company_product) {
+            showAlert(feedback, `Row ${row}: only company products are allowed for company order.`);
+            return;
+        }
+        if (orderType === 'competitor' && product.is_company_product) {
+            showAlert(feedback, `Row ${row}: only competitor products are allowed for competitor order.`);
+            return;
+        }
+
+        const company = state.companies.find((item) => String(item.id) === String(product.company_id));
+        items.push({
+            sequence: items.length + 1,
+            product_id: product.id,
+            product_name: product.name,
+            company_id: product.company_id || company?.id || null,
+            company_name: product.company_name || company?.name || '',
+            is_company_product: Boolean(product.is_company_product),
+            units,
+            unit_price: unitPrice
+        });
+    }
+
+    if (!items.length) {
+        showAlert(feedback, 'Please add at least one product row.');
+        return;
+    }
+
+    try {
+        setLoadingState(submitButton, true, 'Submitting...');
+        const specialist = state.employeeById?.get(String(payload.specialist_id));
+        const inserted = await handleSupabase(
+            supabase.from('sales_orders').insert({
+                order_code: generateOrderCode(),
+                line_id: payload.line_id,
+                account_id: payload.account_id,
+                submitted_by: state.session.employeeId,
+                specialist_id: payload.specialist_id,
+                order_date: payload.order_date,
+                order_type: payload.order_type,
+                notes: payload.notes || null,
+                status: APPROVAL_STATUS.APPROVED,
+                manager_id: specialist?.direct_manager_id || specialist?.line_manager_id || null,
+                admin_id: state.session.employeeId
+            }).select('id').single(),
+            'insert admin sales order'
+        );
+        await handleSupabase(
+            supabase.from('sales_order_items').insert(items.map((item) => ({ ...item, sales_order_id: inserted.id }))),
+            'insert admin sales order items'
+        );
+
+        await loadSalesOrders();
+        buildApprovalsDataset();
+        renderSalesDataSection();
+        renderSalesTargetProducts();
+        renderApprovalsTable();
+        renderSalesDashboardSection();
+        showAlert(feedback, 'Sales order added successfully.', 'success');
+        closeFormModal();
+    } catch (error) {
+        showAlert(feedback, handleError(error));
+    } finally {
+        setLoadingState(submitButton, false);
+    }
+}
+
+function renderSalesLineSwitcher() {
+    const container = document.getElementById('sales-line-switcher');
+    if (!container) return;
+    const linesWithEmployees = getSalesOperationalLines();
+    if (!state.filters.sales.line) {
+        const sorted = [...linesWithEmployees].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        state.filters.sales.line = sorted[0]?.id || '';
+    }
+    container.innerHTML = `
+        <span class="line-switcher-label">Line:</span>
+        <select class="line-switcher-select" id="sales-line-select">
+            ${linesWithEmployees.map((line) => `<option value="${line.id}"${line.id === state.filters.sales.line ? ' selected' : ''}>${line.name}</option>`).join('')}
+        </select>
+    `;
+    container.querySelector('#sales-line-select')?.addEventListener('change', (event) => {
+        state.filters.sales.line = event.target.value;
+        renderSalesDataSection();
+    });
+}
+
+function setupSalesFilters() {
+    const container = document.getElementById('sales-filters');
+    if (!container) return;
+    const previousSelections = {
+        specialist: container.querySelector('#filter-sales-specialist')?.value || '',
+        manager: container.querySelector('#filter-sales-manager')?.value || '',
+        accountType: container.querySelector('#filter-sales-account-type')?.value || '',
+        orderType: container.querySelector('#filter-sales-order-type')?.value || '',
+        companyCompany: container.querySelector('#filter-sales-company-company')?.value || '',
+        companyCategory: container.querySelector('#filter-sales-company-category')?.value || '',
+        companySubCategory: container.querySelector('#filter-sales-company-sub-category')?.value || '',
+        companyProduct: container.querySelector('#filter-sales-company-product')?.value || '',
+        competitorCompany: container.querySelector('#filter-sales-competitor-company')?.value || '',
+        competitorCategory: container.querySelector('#filter-sales-competitor-category')?.value || '',
+        competitorSubCategory: container.querySelector('#filter-sales-competitor-sub-category')?.value || '',
+        competitorProduct: container.querySelector('#filter-sales-competitor-product')?.value || '',
+        month: container.querySelector('#filter-sales-month')?.value || '',
+        from: container.querySelector('#filter-sales-from')?.value || '',
+        to: container.querySelector('#filter-sales-to')?.value || '',
+        accountName: container.querySelector('#filter-sales-account-name')?.value || ''
+    };
+    const specialists = state.employees.filter((emp) => emp.role === ROLES.EMPLOYEE);
+    const managers = state.employees.filter((emp) => emp.role === ROLES.MANAGER);
+    const { company, competitor } = collectDualRowFilterOptions(getEnrichedSalesItems(state.salesOrderItems), state.products);
+    container.innerHTML = `
+        <div class="filters-row">
+            <select class="form-select" id="filter-sales-specialist">
+                <option value="">All Specialists</option>
+                ${specialists.map((item) => `<option value="${item.id}">${item.full_name}</option>`).join('')}
+            </select>
+            <select class="form-select" id="filter-sales-manager">
+                <option value="">All Managers</option>
+                ${managers.map((item) => `<option value="${item.id}">${item.full_name}</option>`).join('')}
+            </select>
+            <select class="form-select" id="filter-sales-account-type">
+                <option value="">All Account Types</option>
+                ${ACCOUNT_TYPES.map((type) => `<option value="${type}">${type}</option>`).join('')}
+            </select>
+            <select class="form-select" id="filter-sales-order-type">
+                <option value="">All Order Types</option>
+                <option value="company">Company Order</option>
+                <option value="competitor">Competitor Order</option>
+            </select>
+        </div>
+        <div class="filters-row">
+            <select class="form-select" id="filter-sales-company-company">
+                <option value="">All Companies</option>
+                ${company.companies.map((item) => `<option value="${item}">${item}</option>`).join('')}
+            </select>
+            <select class="form-select" id="filter-sales-company-category">
+                <option value="">All Categories</option>
+                ${company.categories.map((item) => `<option value="${item}">${item}</option>`).join('')}
+            </select>
+            <select class="form-select" id="filter-sales-company-sub-category">
+                <option value="">All Sub Categories</option>
+                ${company.subCategories.map((item) => `<option value="${escapeOptionText(item)}">${escapeOptionText(item)}</option>`).join('')}
+            </select>
+            <select class="form-select" id="filter-sales-company-product">
+                <option value="">All Products</option>
+                ${company.productOptions.map((option) => `<option value="${option.value}">${escapeOptionText(option.label)}</option>`).join('')}
+            </select>
+        </div>
+        <div class="filters-row">
+            <select class="form-select" id="filter-sales-competitor-company">
+                <option value="">All Companies</option>
+                ${competitor.companies.map((item) => `<option value="${item}">${item}</option>`).join('')}
+            </select>
+            <select class="form-select" id="filter-sales-competitor-category">
+                <option value="">All Categories</option>
+                ${competitor.categories.map((item) => `<option value="${item}">${item}</option>`).join('')}
+            </select>
+            <select class="form-select" id="filter-sales-competitor-sub-category">
+                <option value="">All Sub Categories</option>
+                ${competitor.subCategories.map((item) => `<option value="${escapeOptionText(item)}">${escapeOptionText(item)}</option>`).join('')}
+            </select>
+            <select class="form-select" id="filter-sales-competitor-product">
+                <option value="">All Products</option>
+                ${competitor.productOptions.map((option) => `<option value="${option.value}">${escapeOptionText(option.label)}</option>`).join('')}
+            </select>
+        </div>
+        <div class="filters-row">
+            <select class="form-select" id="filter-sales-month">
+                <option value="">Any Month</option>
+                ${Array.from({ length: 12 }, (_, index) => `<option value="${index + 1}">${new Date(2000, index).toLocaleString(undefined, { month: 'long' })}</option>`).join('')}
+            </select>
+            <input type="date" class="form-control" id="filter-sales-from">
+            <input type="date" class="form-control" id="filter-sales-to">
+            <input type="text" class="form-control" id="filter-sales-account-name" placeholder="Search Account Name...">
+        </div>
+        <div class="filters-row" style="grid-template-columns: 1fr;">
+            <div class="filters-actions" style="justify-self: end;">
+                <button class="btn btn-outline-ghost" id="sales-filter-reset">Reset</button>
+            </div>
+        </div>
+    `;
+    const rerender = () => renderSalesDataSection();
+    container.querySelectorAll('select, input').forEach((el) => {
+        const eventName = el.tagName === 'INPUT' && el.type === 'text' ? 'input' : 'change';
+        el.addEventListener(eventName, rerender);
+    });
+    const setSelectValue = (selector, value) => {
+        const el = container.querySelector(selector);
+        if (!el) return;
+        const hasValue = Array.from(el.options || []).some((option) => option.value === value);
+        el.value = hasValue ? value : '';
+    };
+    setSelectValue('#filter-sales-specialist', previousSelections.specialist);
+    setSelectValue('#filter-sales-manager', previousSelections.manager);
+    setSelectValue('#filter-sales-account-type', previousSelections.accountType);
+    setSelectValue('#filter-sales-order-type', previousSelections.orderType);
+    setSelectValue('#filter-sales-company-company', previousSelections.companyCompany);
+    setSelectValue('#filter-sales-company-category', previousSelections.companyCategory);
+    setSelectValue('#filter-sales-company-sub-category', previousSelections.companySubCategory);
+    setSelectValue('#filter-sales-company-product', previousSelections.companyProduct);
+    setSelectValue('#filter-sales-competitor-company', previousSelections.competitorCompany);
+    setSelectValue('#filter-sales-competitor-category', previousSelections.competitorCategory);
+    setSelectValue('#filter-sales-competitor-sub-category', previousSelections.competitorSubCategory);
+    setSelectValue('#filter-sales-competitor-product', previousSelections.competitorProduct);
+    setSelectValue('#filter-sales-month', previousSelections.month);
+    const fromInput = container.querySelector('#filter-sales-from');
+    const toInput = container.querySelector('#filter-sales-to');
+    const accountNameInput = container.querySelector('#filter-sales-account-name');
+    if (fromInput) fromInput.value = previousSelections.from;
+    if (toInput) toInput.value = previousSelections.to;
+    if (accountNameInput) accountNameInput.value = previousSelections.accountName;
+    container.querySelector('#sales-filter-reset')?.addEventListener('click', () => {
+        container.querySelectorAll('select, input').forEach((el) => { el.value = ''; });
+        renderSalesDataSection();
+    });
+}
+
+function getSalesFilteredOrders() {
+    const line = state.filters.sales.line || '';
+    const specialist = document.getElementById('filter-sales-specialist')?.value || '';
+    const manager = document.getElementById('filter-sales-manager')?.value || '';
+    const accountType = document.getElementById('filter-sales-account-type')?.value || '';
+    const orderType = document.getElementById('filter-sales-order-type')?.value || '';
+    const companyCompany = document.getElementById('filter-sales-company-company')?.value || '';
+    const companyCategory = document.getElementById('filter-sales-company-category')?.value || '';
+    const companySubCategory = document.getElementById('filter-sales-company-sub-category')?.value || '';
+    const companyProduct = document.getElementById('filter-sales-company-product')?.value || '';
+    const competitorCompany = document.getElementById('filter-sales-competitor-company')?.value || '';
+    const competitorCategory = document.getElementById('filter-sales-competitor-category')?.value || '';
+    const competitorSubCategory = document.getElementById('filter-sales-competitor-sub-category')?.value || '';
+    const competitorProduct = document.getElementById('filter-sales-competitor-product')?.value || '';
+    const monthValue = document.getElementById('filter-sales-month')?.value || '';
+    const from = document.getElementById('filter-sales-from')?.value || '';
+    const to = document.getElementById('filter-sales-to')?.value || '';
+    const accountName = (document.getElementById('filter-sales-account-name')?.value || '').trim().toLowerCase();
+
+    const month = monthValue ? Number(monthValue) : null;
+    const fromDate = from ? new Date(from) : null;
+    const toDate = to ? new Date(to) : null;
+    const hasCompanyFilters = Boolean(companyCompany || companyCategory || companySubCategory || companyProduct);
+    const hasCompetitorFilters = Boolean(competitorCompany || competitorCategory || competitorSubCategory || competitorProduct);
+
+    const matchesItemFilters = (item, filters = {}) => {
+        if (!item) return false;
+        if (filters.company && (item.company_name || '') !== filters.company) return false;
+        if (filters.category && (item.category || '') !== filters.category) return false;
+        if (filters.subCategory && (item.sub_category || '') !== filters.subCategory) return false;
+        if (filters.product && String(item.product_id || '') !== String(filters.product) && item.product_name !== filters.product) return false;
+        return true;
+    };
+
+    return state.salesOrders.filter((order) => {
+        if (line && order.line_id !== line) return false;
+        if (specialist && String(order.specialist_id) !== String(specialist)) return false;
+        if (manager) {
+            const specialistEmp = state.employeeById?.get(String(order.specialist_id));
+            const dm = specialistEmp?.direct_manager_id ? String(specialistEmp.direct_manager_id) : '';
+            const lm = specialistEmp?.line_manager_id ? String(specialistEmp.line_manager_id) : '';
+            if (String(manager) !== dm && String(manager) !== lm) return false;
+        }
+        if (accountType && order.account_type !== accountType) return false;
+        if (orderType && order.order_type !== orderType) return false;
+        if (accountName && !(order.account_name || '').toLowerCase().includes(accountName)) return false;
+        if (month || fromDate || toDate) {
+            const d = new Date(order.order_date);
+            if (month && d.getMonth() + 1 !== month) return false;
+            if (fromDate && d < fromDate) return false;
+            if (toDate && d > toDate) return false;
+        }
+        if (hasCompanyFilters || hasCompetitorFilters) {
+            const items = getEnrichedSalesItems(state.salesOrderItemsByOrder.get(order.id) || []);
+            if (hasCompanyFilters) {
+                const companyMatch = items.some((item) => item.is_company_product && matchesItemFilters(item, {
+                    company: companyCompany,
+                    category: companyCategory,
+                    subCategory: companySubCategory,
+                    product: companyProduct
+                }));
+                if (!companyMatch) return false;
+            }
+            if (hasCompetitorFilters) {
+                const competitorMatch = items.some((item) => !item.is_company_product && matchesItemFilters(item, {
+                    company: competitorCompany,
+                    category: competitorCategory,
+                    subCategory: competitorSubCategory,
+                    product: competitorProduct
+                }));
+                if (!competitorMatch) return false;
+            }
+        }
+        return true;
+    });
+}
+
+function getEnrichedSalesItems(items = []) {
+    return items.map((item) => {
+        const product = item.product_id ? state.products.find((p) => String(p.id) === String(item.product_id)) : null;
+        return {
+            ...item,
+            company_name: item.company_name || product?.company_name || '',
+            category: item.category || product?.category || '',
+            sub_category: item.sub_category || product?.sub_category || '',
+            product_name: item.product_name || product?.name || '',
+            is_company_product: typeof item.is_company_product === 'boolean' ? item.is_company_product : Boolean(product?.is_company_product)
+        };
+    });
+}
+
+function computeSalesSummaryMetrics(orders = [], scope = null) {
+    const dmcUnits = orders.reduce((sum, item) => sum + Number(item.total_company_units || 0), 0);
+    const dmcValue = orders.reduce((sum, item) => sum + Number(item.total_company_value || 0), 0);
+    const competitorUnits = orders.reduce((sum, item) => sum + Number(item.total_competitor_units || 0), 0);
+    const competitorValue = orders.reduce((sum, item) => sum + Number(item.total_competitor_value || 0), 0);
+
+    const scopedOrderIds = new Set(orders.map((order) => String(order.id)));
+    const scopedItems = getEnrichedSalesItems(state.salesOrderItems.filter((item) => scopedOrderIds.has(String(item.sales_order_id))));
+
+    const accountSalesValueMap = new Map();
+    const productSalesUnitsMap = new Map();
+    orders.forEach((order) => {
+        const orderItems = scopedItems.filter((item) => String(item.sales_order_id) === String(order.id));
+        const companyValue = orderItems
+            .filter((item) => item.is_company_product)
+            .reduce((sum, item) => sum + (Number(item.units || 0) * Number(item.unit_price || 0)), 0);
+        const accountKey = `${order.account_id || ''}::${order.specialist_id || ''}`;
+        accountSalesValueMap.set(accountKey, (accountSalesValueMap.get(accountKey) || 0) + companyValue);
+        orderItems.filter((item) => item.is_company_product).forEach((item) => {
+            const productKey = `${item.product_id || ''}::${order.specialist_id || ''}`;
+            productSalesUnitsMap.set(productKey, (productSalesUnitsMap.get(productKey) || 0) + Number(item.units || 0));
+        });
+    });
+
+    const relevantAccountTargets = scope?.relevantAccountTargets || state.salesAccountTargets;
+    const relevantProductTargets = scope?.relevantProductTargets || state.salesProductTargets;
+
+    const targetValue = relevantAccountTargets.reduce((sum, target) => sum + Number(target.target_value || 0), 0);
+    const accountAchievementRatios = relevantAccountTargets
+        .filter((target) => Number(target.target_value || 0) > 0)
+        .map((target) => {
+            const key = `${target.account_id || ''}::${target.specialist_id || ''}`;
+            const actual = accountSalesValueMap.get(key) || 0;
+            return (actual / Number(target.target_value || 1)) * 100;
+        });
+
+    const latestProductTargets = new Map();
+    relevantProductTargets.forEach((target) => {
+        const key = `${target.product_id || ''}::${target.specialist_id || ''}`;
+        const prev = latestProductTargets.get(key);
+        if (!prev || new Date(prev.effective_from || 0) < new Date(target.effective_from || 0)) {
+            latestProductTargets.set(key, target);
+        }
+    });
+    const unitAchievementRatios = Array.from(latestProductTargets.values())
+        .filter((target) => Number(target.target_units || 0) > 0)
+        .map((target) => {
+            const key = `${target.product_id || ''}::${target.specialist_id || ''}`;
+            const actual = productSalesUnitsMap.get(key) || 0;
+            return (actual / Number(target.target_units || 1)) * 100;
+        });
+
+    const valueAchievement = targetValue > 0 ? (dmcValue / targetValue) * 100 : 0;
+    const unitsAchievementAvg = unitAchievementRatios.length ? unitAchievementRatios.reduce((a, b) => a + b, 0) / unitAchievementRatios.length : 0;
+    const accountsAchievementAvg = accountAchievementRatios.length ? accountAchievementRatios.reduce((a, b) => a + b, 0) / accountAchievementRatios.length : 0;
+
+    return {
+        dmcUnits,
+        dmcValue,
+        targetValue,
+        valueAchievement,
+        unitsAchievementAvg,
+        accountsAchievementAvg,
+        competitorUnits,
+        competitorValue
+    };
+}
+
+function buildSalesOrderRow(order) {
+    const items = state.salesOrderItemsByOrder.get(order.id) || [];
+    const row = {
+        id: order.id,
+        specialist: order.specialist_name || order.submitted_by_name || '',
+        line: order.line_name || '',
+        status: order.status,
+        account: order.account_name || '',
+        account_type: order.account_type || '',
+        order_date: order.order_date,
+        order_code: order.order_code || '',
+        dmc_units: order.total_company_units || 0,
+        dmc_value: order.total_company_value || 0,
+        competitor_units: order.total_competitor_units || 0,
+        competitor_value: order.total_competitor_value || 0
+    };
+    for (let i = 1; i <= 20; i += 1) {
+        const item = items[i - 1];
+        row[`product${i}_name`] = item?.product_name || '';
+        row[`product${i}_company`] = item?.company_name || '';
+        row[`product${i}_units`] = item?.units || 0;
+        row[`product${i}_price`] = item?.unit_price || 0;
+    }
+    return row;
+}
+
+function buildSalesOrderColumns() {
+    const columns = [
+        { title: 'Product Specialist', field: 'specialist', minWidth: 200, headerFilter: 'input', frozen: true },
+        { title: 'Line', field: 'line', width: 150, headerFilter: 'input' },
+        { title: 'Status', field: 'status', formatter: tableFormatters.status, width: 140 },
+        { title: 'Account Name', field: 'account', minWidth: 180, headerFilter: 'input' },
+        { title: 'Account Type', field: 'account_type', width: 140 },
+        { title: 'Date', field: 'order_date', formatter: tableFormatters.date, width: 140 },
+        { title: 'Order Code', field: 'order_code', width: 170 }
+    ];
+    for (let i = 1; i <= 20; i += 1) {
+        columns.push({ title: `Product ${i}`, field: `product${i}_name`, minWidth: 160, visible: false });
+        columns.push({ title: `P${i} Company`, field: `product${i}_company`, minWidth: 150, visible: false });
+        columns.push({ title: `P${i} Units`, field: `product${i}_units`, formatter: tableFormatters.number(), width: 120, visible: false });
+        columns.push({ title: `P${i} Price`, field: `product${i}_price`, formatter: tableFormatters.number(2), width: 120, visible: false });
+    }
+    columns.push({ title: 'DMC Units', field: 'dmc_units', formatter: tableFormatters.number(), width: 130 });
+    columns.push({ title: 'DMC Value', field: 'dmc_value', formatter: tableFormatters.number(2), width: 140 });
+    columns.push({ title: 'Competitor Units', field: 'competitor_units', formatter: tableFormatters.number(), width: 150 });
+    columns.push({ title: 'Competitor Value', field: 'competitor_value', formatter: tableFormatters.number(2), width: 150 });
+    columns.push({
+        title: 'Actions',
+        field: 'actions',
+        width: 200,
+        hozAlign: 'center',
+        formatter: tableFormatters.actions([
+            { name: 'view', label: 'View', icon: 'bi bi-eye', variant: 'btn-gradient' },
+            { name: 'delete', label: 'Delete', icon: 'bi bi-trash', variant: 'btn-outline-ghost' }
+        ]),
+        headerSort: false
+    });
+    return columns;
+}
+
+function attachSalesProductsToggle(table, { anchorField = 'actions', storageKey = 'admin_sales_products_toggle' } = {}) {
+    if (!table || table._salesProductsToggleInitialized) return;
+    const toggleFields = [];
+    for (let i = 1; i <= 20; i += 1) {
+        toggleFields.push(`product${i}_name`, `product${i}_company`, `product${i}_units`, `product${i}_price`);
+    }
+    const init = () => {
+        const anchorColumn = table.getColumn(anchorField);
+        const headerEl = anchorColumn?.getElement?.();
+        const titleEl = headerEl?.querySelector('.tabulator-col-title');
+        if (!titleEl || titleEl.querySelector('.sales-products-toggle-btn')) return;
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = 'btn btn-sm btn-outline-ghost sales-products-toggle-btn';
+        titleEl.classList.add('products-toggle-title');
+        titleEl.appendChild(toggleBtn);
+        let expanded = localStorage.getItem(storageKey) === '1';
+        const apply = () => {
+            table.blockRedraw();
+            toggleFields.forEach((field) => {
+                const col = table.getColumn(field);
+                if (!col) return;
+                if (expanded) col.show(); else col.hide();
+            });
+            table.restoreRedraw();
+            toggleBtn.textContent = expanded ? '−' : '+';
+            toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            localStorage.setItem(storageKey, expanded ? '1' : '0');
+        };
+        apply();
+        toggleBtn.addEventListener('click', () => {
+            expanded = !expanded;
+            apply();
+        });
+        table._salesProductsToggleInitialized = true;
+    };
+    if (table.getColumn(anchorField)) init(); else table.on('tableBuilt', init);
+}
+
+function renderSalesStats(orders = []) {
+    const container = document.getElementById('sales-stat-cards');
+    if (!container) return;
+    const metrics = computeSalesSummaryMetrics(orders, getAdminSalesMetricScope(state.filters.sales.line || ''));
+    container.innerHTML = `
+        <div class="stat-card"><h4>DMC Unit</h4><div class="value">${formatSalesStatValue(metrics.dmcUnits)}</div></div>
+        <div class="stat-card"><h4>DMC Value</h4><div class="value">${formatSalesStatValue(metrics.dmcValue)}</div></div>
+        <div class="stat-card"><h4>Target Value</h4><div class="value">${formatSalesStatValue(metrics.targetValue)}</div></div>
+        <div class="stat-card"><h4>Achievement</h4><div class="value">${formatSalesStatPercent(metrics.valueAchievement)}</div></div>
+        <div class="stat-card"><h4>Units Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.unitsAchievementAvg)}</div></div>
+        <div class="stat-card"><h4>Accounts Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.accountsAchievementAvg)}</div></div>
+        <div class="stat-card"><h4>Competitor Units</h4><div class="value">${formatSalesStatValue(metrics.competitorUnits)}</div></div>
+        <div class="stat-card"><h4>Competitor Value</h4><div class="value">${formatSalesStatValue(metrics.competitorValue)}</div></div>
+    `;
+}
+
+function renderSalesTable(orders = []) {
+    const tableData = orders.map((order) => buildSalesOrderRow(order));
+    state.tables.sales = createTable('sales-table', buildSalesOrderColumns(), tableData, {
+        height: 520,
+        initialSort: [{ column: 'order_date', dir: 'desc' }]
+    });
+    bindTableActions(state.tables.sales, {
+        view: (rowData) => populateSalesOrderReview(rowData.id, {}, false),
+        delete: (rowData) => deleteSalesOrder(rowData.id)
+    });
+    attachSalesProductsToggle(state.tables.sales, { anchorField: 'actions', storageKey: 'admin_sales_products_toggle' });
+}
+
+function renderSalesDataSection() {
+    renderSalesLineSwitcher();
+    const orders = getSalesFilteredOrders();
+    renderSalesStats(orders);
+    renderSalesTable(orders);
+}
+
+function setupSalesTargetAccountFilters() {
+    const container = document.getElementById('sales-target-accounts-filters');
+    if (!container) return;
+    const salesLines = getSalesOperationalLines();
+    const oldestLine = getOldestSalesLine();
+    const specialists = state.employees.filter((emp) => emp.role === ROLES.EMPLOYEE);
+    const managers = state.employees.filter((emp) => emp.role === ROLES.MANAGER);
+    container.innerHTML = `
+        <select class="form-select" id="sales-target-account-line">${salesLines.map((line) => `<option value="${line.id}"${line.id === oldestLine ? ' selected' : ''}>${line.name}</option>`).join('')}</select>
+        <select class="form-select" id="sales-target-account-specialist"><option value="">All Specialists</option>${specialists.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}</select>
+        <select class="form-select" id="sales-target-account-manager"><option value="">All Managers</option>${managers.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}</select>
+        <select class="form-select" id="sales-target-account-type"><option value="">All Account Types</option>${ACCOUNT_TYPES.map((type) => `<option value="${type}">${type}</option>`).join('')}</select>
+    `;
+    container.querySelectorAll('select').forEach((el) => el.addEventListener('change', () => renderSalesTargetAccounts()));
+}
+
+function getSalesTargetFilteredAccounts() {
+    const line = document.getElementById('sales-target-account-line')?.value || getOldestSalesLine();
+    const specialist = document.getElementById('sales-target-account-specialist')?.value || '';
+    const manager = document.getElementById('sales-target-account-manager')?.value || '';
+    const accountType = document.getElementById('sales-target-account-type')?.value || '';
+    const approvedAccounts = state.accounts.filter((acc) => acc.status === APPROVAL_STATUS.APPROVED);
+    return approvedAccounts.filter((acc) => {
+        if (line && acc.line_id !== line) return false;
+        if (specialist && String(acc.owner_employee_id) !== String(specialist)) return false;
+        if (accountType && acc.account_type !== accountType) return false;
+        if (manager) {
+            const owner = state.employeeById?.get(String(acc.owner_employee_id));
+            const dm = owner?.direct_manager_id ? String(owner.direct_manager_id) : '';
+            const lm = owner?.line_manager_id ? String(owner.line_manager_id) : '';
+            if (String(manager) !== dm && String(manager) !== lm) return false;
+        }
+        return true;
+    });
+}
+
+function renderSalesTargetAccounts() {
+    const accounts = getSalesTargetFilteredAccounts();
+    const targetMap = new Map(state.salesAccountTargets.map((target) => [`${target.account_id}::${target.specialist_id}`, target]));
+    const tableData = accounts.map((acc) => {
+        const target = targetMap.get(`${acc.id}::${acc.owner_employee_id}`);
+        return {
+            id: acc.id,
+            specialist_id: acc.owner_employee_id,
+            account: acc.name,
+            specialist: acc.owner_name || '',
+            line: acc.line_name || '',
+            target_value: Number(target?.target_value || 0)
+        };
+    });
+    const stats = document.getElementById('sales-target-accounts-stats');
+    if (stats) {
+        stats.innerHTML = `
+            <div class="stat-card"><h4>Accounts Number</h4><div class="value">${formatNumber(tableData.length)}</div></div>
+            <div class="stat-card"><h4>Accounts Target</h4><div class="value">${formatNumber(tableData.reduce((s, i) => s + Number(i.target_value || 0), 0), 2)}</div></div>
+        `;
+    }
+    const columns = [
+        { title: 'Account', field: 'account', minWidth: 220, headerFilter: 'input' },
+        { title: 'Product Specialist', field: 'specialist', minWidth: 220, headerFilter: 'input' },
+        { title: 'Line', field: 'line', width: 160, headerFilter: 'input' },
+        { title: 'Target Value', field: 'target_value', formatter: tableFormatters.number(2), width: 170 },
+        { title: 'Action', field: 'actions', width: 140, hozAlign: 'center', formatter: tableFormatters.actions([{ name: 'edit', label: 'Edit', icon: 'bi bi-pencil', variant: 'btn-gradient' }]), headerSort: false }
+    ];
+    state.tables.salesTargetAccounts = createTable('sales-target-accounts-table', columns, tableData, { height: 500 });
+    bindTableActions(state.tables.salesTargetAccounts, { edit: (rowData) => editSalesAccountTarget(rowData) });
+}
+
+function setupSalesTargetProductFilters() {
+    const container = document.getElementById('sales-target-products-filters');
+    if (!container) return;
+    const salesLines = getSalesOperationalLines();
+    const oldestLine = getOldestSalesLine();
+    const specialists = state.employees.filter((emp) => emp.role === ROLES.EMPLOYEE);
+    const managers = state.employees.filter((emp) => emp.role === ROLES.MANAGER);
+    container.innerHTML = `
+        <select class="form-select" id="sales-target-product-line">${salesLines.map((line) => `<option value="${line.id}"${line.id === oldestLine ? ' selected' : ''}>${line.name}</option>`).join('')}</select>
+        <select class="form-select" id="sales-target-product-specialist"><option value="">All Specialists</option>${specialists.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}</select>
+        <select class="form-select" id="sales-target-product-manager"><option value="">All Managers</option>${managers.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}</select>
+    `;
+    container.querySelectorAll('select').forEach((el) => el.addEventListener('change', () => renderSalesTargetProducts()));
+}
+
+function getFilteredSalesTargetProducts() {
+    const line = document.getElementById('sales-target-product-line')?.value || getOldestSalesLine();
+    const specialist = document.getElementById('sales-target-product-specialist')?.value || '';
+    const manager = document.getElementById('sales-target-product-manager')?.value || '';
+    let products = state.products.filter((p) => p.is_company_product);
+    if (line) products = products.filter((p) => p.line_id === line);
+    let specialists = state.employees.filter((emp) => emp.role === ROLES.EMPLOYEE);
+    if (line) specialists = specialists.filter((emp) => emp.line_id === line);
+    if (manager) specialists = specialists.filter((emp) => String(emp.direct_manager_id) === String(manager) || String(emp.line_manager_id) === String(manager));
+    if (specialist) specialists = specialists.filter((emp) => String(emp.id) === String(specialist));
+    return { products, specialists };
+}
+
+function renderSalesTargetProducts() {
+    const { products, specialists } = getFilteredSalesTargetProducts();
+    const pricesByProduct = new Map(state.salesProductPrices.map((price) => [String(price.product_id), Number(price.unit_price || 0)]));
+    const targetsByKey = new Map();
+    state.salesProductTargets.forEach((target) => {
+        const key = `${target.product_id}::${target.specialist_id}`;
+        const prev = targetsByKey.get(key);
+        if (!prev || new Date(prev.effective_from || 0) < new Date(target.effective_from || 0)) targetsByKey.set(key, target);
+    });
+
+    const columns = [{ title: 'Product', field: 'product_name', minWidth: 220, frozen: true }];
+    specialists.forEach((sp) => {
+        columns.push({
+            title: sp.full_name,
+            columns: [
+                { title: 'Target Units', field: `target_units_${sp.id}`, formatter: tableFormatters.number(), width: 140 },
+                { title: 'Target Value', field: `target_value_${sp.id}`, formatter: tableFormatters.number(2), width: 150 }
+            ]
+        });
+    });
+    columns.push({ title: 'Unit Price', field: 'unit_price', formatter: tableFormatters.number(2), width: 140 });
+    columns.push({ title: 'Action', field: 'actions', width: 240, hozAlign: 'center', formatter: tableFormatters.actions([{ name: 'edit-price', label: 'Edit Price', icon: 'bi bi-currency-dollar', variant: 'btn-outline-ghost' }, { name: 'edit-target', label: 'Edit Target', icon: 'bi bi-pencil', variant: 'btn-gradient' }]), headerSort: false });
+
+    const data = products.map((product) => {
+        const row = { id: product.id, product_name: product.name, line_id: product.line_id, unit_price: pricesByProduct.get(String(product.id)) || 0 };
+        specialists.forEach((sp) => {
+            const target = targetsByKey.get(`${product.id}::${sp.id}`);
+            row[`target_units_${sp.id}`] = Number(target?.target_units || 0);
+            row[`target_value_${sp.id}`] = Number(target?.target_value || 0);
+        });
+        return row;
+    });
+
+    const stats = document.getElementById('sales-target-products-stats');
+    if (stats) {
+        const orders = getSalesFilteredOrders();
+        stats.innerHTML = `
+            <div class="stat-card"><h4>DMC Sales Units</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_company_units || 0), 0))}</div></div>
+            <div class="stat-card"><h4>DMC Sales Value</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_company_value || 0), 0), 2)}</div></div>
+            <div class="stat-card"><h4>Competitor Units</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_competitor_units || 0), 0))}</div></div>
+            <div class="stat-card"><h4>Competitor Value</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_competitor_value || 0), 0), 2)}</div></div>
+        `;
+    }
+
+    state.tables.salesTargetProducts = createTable('sales-target-products-table', columns, data, { height: 520 });
+    bindTableActions(state.tables.salesTargetProducts, {
+        'edit-price': (rowData) => editSalesProductPrice(rowData),
+        'edit-target': (rowData) => editSalesProductTarget(rowData, specialists)
+    });
+}
+
+function renderSalesTargetSection() {
+    renderSalesTargetAccounts();
+    renderSalesTargetProducts();
+}
+
+function setupSalesDashboardFilters() {
+    const container = document.getElementById('sales-dashboard-filters');
+    if (!container) return;
+    container.innerHTML = '<div class="text-secondary">Sales dashboard filters will follow sales data filters.</div>';
+}
+
+function renderSalesDashboardSection() {
+    const switcherContainer = document.getElementById('sales-dashboard-line-switcher');
+    if (switcherContainer) {
+        const linesWithEmployees = getSalesOperationalLines();
+        if (!state.filters.salesDashboard.line) state.filters.salesDashboard.line = linesWithEmployees[0]?.id || '';
+        switcherContainer.innerHTML = `
+            <span class="line-switcher-label">Line:</span>
+            <select class="line-switcher-select" id="sales-dashboard-line-select">
+                ${linesWithEmployees.map((line) => `<option value="${line.id}"${line.id === state.filters.salesDashboard.line ? ' selected' : ''}>${line.name}</option>`).join('')}
+            </select>
+        `;
+        switcherContainer.querySelector('#sales-dashboard-line-select')?.addEventListener('change', (event) => {
+            state.filters.salesDashboard.line = event.target.value;
+            renderSalesDashboardSection();
+        });
+    }
+    const stats = document.getElementById('sales-dashboard-stat-cards');
+    if (!stats) return;
+    const selectedLine = state.filters.salesDashboard.line || '';
+    const orders = state.salesOrders.filter((order) => !selectedLine || order.line_id === selectedLine);
+    const metrics = computeSalesSummaryMetrics(orders, getAdminSalesMetricScope(selectedLine, { specialist: '', manager: '', accountType: '', accountName: '' }));
+    stats.innerHTML = `
+        <div class="stat-card"><h4>DMC Unit</h4><div class="value">${formatSalesStatValue(metrics.dmcUnits)}</div></div>
+        <div class="stat-card"><h4>DMC Value</h4><div class="value">${formatSalesStatValue(metrics.dmcValue)}</div></div>
+        <div class="stat-card"><h4>Target Value</h4><div class="value">${formatSalesStatValue(metrics.targetValue)}</div></div>
+        <div class="stat-card"><h4>Achievement</h4><div class="value">${formatSalesStatPercent(metrics.valueAchievement)}</div></div>
+        <div class="stat-card"><h4>Units Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.unitsAchievementAvg)}</div></div>
+        <div class="stat-card"><h4>Accounts Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.accountsAchievementAvg)}</div></div>
+        <div class="stat-card"><h4>Competitor Units</h4><div class="value">${formatSalesStatValue(metrics.competitorUnits)}</div></div>
+        <div class="stat-card"><h4>Competitor Value</h4><div class="value">${formatSalesStatValue(metrics.competitorValue)}</div></div>
+    `;
+}
+
+function ensureSalesTargetEditModal() {
+    let modalEl = document.getElementById('sales-target-edit-modal');
+    if (!modalEl) {
+        modalEl = document.createElement('div');
+        modalEl.id = 'sales-target-edit-modal';
+        modalEl.className = 'modal fade';
+        modalEl.tabIndex = -1;
+        modalEl.innerHTML = `
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content bg-dark text-light border-secondary">
+                    <div class="modal-header border-secondary">
+                        <h5 class="modal-title" id="sales-target-edit-modal-title">Edit</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <form id="sales-target-edit-modal-form">
+                        <div class="modal-body">
+                            <div id="sales-target-edit-modal-feedback" class="alert-feedback d-none mb-3"></div>
+                            <div id="sales-target-edit-modal-body" class="d-grid gap-3"></div>
+                        </div>
+                        <div class="modal-footer border-secondary">
+                            <button type="button" class="btn btn-outline-ghost" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-gradient" id="sales-target-edit-modal-save">Save</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modalEl);
+    }
+    const modal = window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance(modalEl) : null;
+    return {
+        modal,
+        modalEl,
+        titleEl: modalEl.querySelector('#sales-target-edit-modal-title'),
+        formEl: modalEl.querySelector('#sales-target-edit-modal-form'),
+        bodyEl: modalEl.querySelector('#sales-target-edit-modal-body'),
+        feedbackEl: modalEl.querySelector('#sales-target-edit-modal-feedback'),
+        saveBtn: modalEl.querySelector('#sales-target-edit-modal-save')
+    };
+}
+
+function openSalesTargetEditModal({ title, bodyHtml, submitLabel = 'Save', onSubmit }) {
+    const modalRefs = ensureSalesTargetEditModal();
+    if (!modalRefs.modal || !modalRefs.formEl || !modalRefs.bodyEl || !modalRefs.titleEl) return;
+    modalRefs.titleEl.textContent = title || 'Edit';
+    modalRefs.bodyEl.innerHTML = bodyHtml || '';
+    if (modalRefs.saveBtn) modalRefs.saveBtn.textContent = submitLabel;
+    hideAlert(modalRefs.feedbackEl);
+
+    const submitHandler = async (event) => {
+        event.preventDefault();
+        const payload = Object.fromEntries(new FormData(modalRefs.formEl).entries());
+        try {
+            await onSubmit(payload, modalRefs);
+            modalRefs.modal.hide();
+        } catch (error) {
+            showAlert(modalRefs.feedbackEl, handleError(error));
+        }
+    };
+    modalRefs.formEl.addEventListener('submit', submitHandler, { once: true });
+    modalRefs.modal.show();
+}
+
+async function editSalesAccountTarget(rowData) {
+    openSalesTargetEditModal({
+        title: `Edit Account Target - ${rowData.account || 'Account'}`,
+        submitLabel: 'Save Target',
+        bodyHtml: `
+            <div>
+                <label class="form-label">Target Value</label>
+                <input type="number" class="form-control" name="target_value" min="0" step="1" value="${Number(rowData.target_value || 0)}" required>
+            </div>
+        `,
+        onSubmit: async (payload) => {
+            const value = Number(payload.target_value || 0);
+            if (Number.isNaN(value) || value < 0) throw new Error('Invalid target value.');
+            await handleSupabase(
+                supabase.from('sales_account_targets').upsert({
+                    account_id: rowData.id,
+                    specialist_id: rowData.specialist_id,
+                    line_id: state.accounts.find((acc) => acc.id === rowData.id)?.line_id || null,
+                    target_value: value,
+                    created_by: state.session.employeeId,
+                    updated_by: state.session.employeeId
+                }, { onConflict: 'account_id,specialist_id,line_id' }),
+                'upsert sales account target'
+            );
+            await loadSalesTargets();
+            renderSalesTargetAccounts();
+        }
+    });
+}
+
+async function editSalesProductPrice(rowData) {
+    openSalesTargetEditModal({
+        title: `Edit Unit Price - ${rowData.product_name || 'Product'}`,
+        submitLabel: 'Save Price',
+        bodyHtml: `
+            <div>
+                <label class="form-label">Unit Price</label>
+                <input type="number" class="form-control" name="unit_price" min="0" step="0.01" value="${Number(rowData.unit_price || 0)}" required>
+            </div>
+        `,
+        onSubmit: async (payload) => {
+            const value = Number(payload.unit_price || 0);
+            if (Number.isNaN(value) || value < 0) throw new Error('Invalid unit price.');
+            await handleSupabase(
+                supabase.from('sales_product_prices').upsert({
+                    product_id: rowData.id,
+                    line_id: rowData.line_id || null,
+                    unit_price: value,
+                    updated_by: state.session.employeeId
+                }),
+                'upsert sales product price'
+            );
+            await loadSalesTargets();
+            renderSalesTargetProducts();
+        }
+    });
+}
+
+async function editSalesProductTarget(rowData, specialists = []) {
+    if (!specialists.length) {
+        showToast('No specialists found for current filter.', 'warning');
+        return;
+    }
+    const specialistOptions = specialists
+        .map((sp) => `<option value="${sp.id}">${escapeOptionText(sp.full_name || '')}</option>`)
+        .join('');
+    const defaultSpecialistId = String(specialists[0]?.id || '');
+
+    openSalesTargetEditModal({
+        title: `Edit Product Target - ${rowData.product_name || 'Product'}`,
+        submitLabel: 'Save Target',
+        bodyHtml: `
+            <div>
+                <label class="form-label">Product Specialist</label>
+                <select class="form-select" name="specialist_id" required>
+                    ${specialistOptions}
+                </select>
+            </div>
+            <div>
+                <label class="form-label">Target Units</label>
+                <input type="number" class="form-control" name="target_units" min="0" step="1" value="0" required>
+            </div>
+        `,
+        onSubmit: async (payload) => {
+            const specialist = specialists.find((sp) => String(sp.id) === String(payload.specialist_id || defaultSpecialistId));
+            if (!specialist) throw new Error('Invalid specialist selection.');
+            const units = Number(payload.target_units || 0);
+            if (Number.isNaN(units) || units < 0) throw new Error('Invalid units value.');
+
+            const price = Number(state.salesProductPrices.find((p) => String(p.product_id) === String(rowData.id))?.unit_price || 0);
+            await handleSupabase(
+                supabase.from('sales_product_targets').upsert(
+                    {
+                        product_id: rowData.id,
+                        specialist_id: specialist.id,
+                        line_id: rowData.line_id || specialist.line_id || null,
+                        target_units: units,
+                        unit_price_snapshot: price,
+                        effective_from: new Date().toISOString().slice(0, 10),
+                        created_by: state.session.employeeId,
+                        updated_by: state.session.employeeId
+                    },
+                    { onConflict: 'product_id,specialist_id,line_id,effective_from' }
+                ),
+                'upsert sales product target'
+            );
+            await loadSalesTargets();
+            renderSalesTargetProducts();
+        }
+    });
+}
+
+function populateSalesOrderReview(id, payload = {}, showActions = false) {
+    const orderRecord = state.salesOrders.find((item) => item.id === id) || payload || {};
+    const items = state.salesOrderItemsByOrder.get(id) || [];
+    const specialist = orderRecord.specialist_name || orderRecord.submitted_by_name || 'N/A';
+    const account = orderRecord.account_name || 'N/A';
+    const status = orderRecord.status || 'Pending';
+    const orderDate = orderRecord.order_date ? formatDate(orderRecord.order_date) : 'N/A';
+    const orderType = orderRecord.order_type || 'company';
+    const notes = orderRecord.notes || 'No additional notes provided.';
+
+    const itemsBody = items.length
+        ? items.map((item, index) => `<tr><td>${index + 1}</td><td>${item.product_name || 'Unnamed Product'}</td><td>${item.company_name || ''}</td><td>${formatNumber(item.units || 0)}</td><td>${formatNumber(item.unit_price || 0, 2)}</td><td>${formatNumber(item.line_total || (Number(item.units || 0) * Number(item.unit_price || 0)), 2)}</td></tr>`).join('')
+        : `<tr><td colspan="6" class="text-center text-secondary">No products attached.</td></tr>`;
+
+    const content = `
+        <div class="case-review">
+            <div class="row g-3">
+                <div class="col-md-6"><div class="review-field"><span>Order Code</span><strong>${orderRecord.order_code || 'N/A'}</strong></div></div>
+                <div class="col-md-6"><div class="review-field"><span>Order Date</span><strong>${orderDate}</strong></div></div>
+                <div class="col-md-6"><div class="review-field"><span>Product Specialist</span><strong>${specialist}</strong></div></div>
+                <div class="col-md-6"><div class="review-field"><span>Status</span><strong>${status}</strong></div></div>
+                <div class="col-md-6"><div class="review-field"><span>Order Type</span><strong>${orderType}</strong></div></div>
+                <div class="col-md-6"><div class="review-field"><span>Account</span><strong>${account}</strong></div></div>
+            </div>
+            <div class="mt-4"><h6 class="text-secondary text-uppercase mb-2">Products</h6><div class="table-responsive rounded"><table class="table table-dark table-sm align-middle mb-0"><thead><tr class="text-secondary"><th>#</th><th>Product</th><th>Company</th><th>Units</th><th>Unit Price</th><th>Value</th></tr></thead><tbody>${itemsBody}</tbody></table></div></div>
+            <div class="mt-4"><h6 class="text-secondary text-uppercase mb-2">Notes</h6><p class="mb-0">${notes}</p></div>
+        </div>
+    `;
+
+    const recordForApproval = { id, type: 'order', name: orderRecord.order_code || `Order ${String(id).slice(0, 6)}`, payload: orderRecord };
+    showReviewModal(`Review Order ${orderRecord.order_code || ''}`, content, { showCaseActions: showActions, caseRecord: recordForApproval });
+}
+
+async function deleteSalesOrder(orderId) {
+    if (!window.confirm('Delete this sales order permanently?')) return;
+    try {
+        await handleSupabase(supabase.from('sales_order_items').delete().eq('sales_order_id', orderId), 'delete sales order items');
+        await handleSupabase(supabase.from('sales_orders').delete().eq('id', orderId), 'delete sales order');
+        await loadSalesOrders();
+        buildApprovalsDataset();
+        renderSalesDataSection();
+        renderApprovalsTable();
+    } catch (error) {
+        alert(handleError(error));
+    }
+}
+
+async function openAdminSalesOrderWizard() {}
 
 // ============================================================================
 // MESSAGE SYSTEM

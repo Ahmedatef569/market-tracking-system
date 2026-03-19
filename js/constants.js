@@ -17,6 +17,7 @@ export const ENTITY_TYPES = Object.freeze({
     DOCTOR: 'doctor',
     ACCOUNT: 'account',
     CASE: 'case',
+    ORDER: 'order',
     PRODUCT: 'product',
     EMPLOYEE: 'employee'
 });
@@ -29,6 +30,7 @@ export const NOTIFICATION_TYPES = Object.freeze({
 export const LOCAL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export const MAX_PRODUCTS_PER_CASE = 12;
+export const MAX_PRODUCTS_PER_ORDER = 20;
 
 export const STATUS_LABELS = {
     [APPROVAL_STATUS.PENDING_MANAGER]: 'Pending Manager',

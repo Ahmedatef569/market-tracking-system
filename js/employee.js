@@ -1,6 +1,6 @@
 import { supabase, handleSupabase } from './supabaseClient.js';
 import { requireAuth, logout, updatePassword, hydrateSession } from './session.js';
-import { ROLES, APPROVAL_STATUS, ACCOUNT_TYPES, MAX_PRODUCTS_PER_CASE } from './constants.js';
+import { ROLES, APPROVAL_STATUS, ACCOUNT_TYPES, MAX_PRODUCTS_PER_ORDER } from './constants.js';
 import { showWelcomePopup } from './welcomePopup.js';
 import { initAutoVersionCheck } from './versionCheck.js';
 import {
@@ -21,7 +21,9 @@ import {
     ensureThemeApplied,
     makeSelectSearchable,
     addEnglishOnlyValidation,
-    validateFormEnglishOnly
+    validateFormEnglishOnly,
+    loadAllPages,
+    loadAllByIdBatches
 } from './utils.js';
 import { createTable, tableFormatters, bindTableActions, ensureTabulator } from './tables.js';
 import { applyChartDefaults, resetChartDefaults, buildLineChart, buildBarChart, buildDoughnutChart, buildPieChart, destroyChart } from './charts.js';
@@ -78,12 +80,19 @@ const state = {
     cases: [],
     caseProducts: [],
     caseProductsByCase: new Map(),
+    salesOrders: [],
+    salesOrderItems: [],
+    salesOrderItemsByOrder: new Map(),
+    salesAccountTargets: [],
+    salesProductTargets: [],
+    salesProductPrices: [],
     approvals: [],
     tables: {},
     charts: {},
     autocompletes: {},
     companyProductsMap: new Map(),
     caseFormRows: 1,
+    employeeSalesOrderFormRows: 1,
     chartPagination: {
         dmcCasesPage: 0,
         competitorCasesPage: 0,
@@ -303,12 +312,20 @@ function setupMyDataTabs() {
     initTabNavigation(buttons, panels, 'myDataTab', 'products');
 }
 
+function setupMySalesTargetTabs() {
+    const buttons = Array.from(document.querySelectorAll('#my-sales-target-tabs button'));
+    const panels = Array.from(document.querySelectorAll('.my-sales-target-panel'));
+    if (!buttons.length || !panels.length) return;
+    initTabNavigation(buttons, panels, 'mySalesTargetTab', 'accounts');
+}
+
 async function loadInitialData() {
     await Promise.all([
         loadProducts(),
         loadDoctors(),
         loadAccounts(),
-        loadCases()
+        loadCases(),
+        loadSalesExpansionData()
     ]);
     buildApprovalDataset();
     ensureLineDatalist();
@@ -321,6 +338,12 @@ function initializeForms() {
     setupCaseFilters();
     setupDashboardFilters();
     setupApprovalsFilters();
+    setupMySalesTargetTabs();
+    setupMySalesTargetAccountFilters();
+    setupMySalesTargetProductFilters();
+    setupEmployeeSalesOrderForm();
+    setupMySalesFilters();
+    setupEmployeeSalesDashboardFilters();
     setupExportButtons();
 }
 
@@ -331,6 +354,9 @@ function renderAll() {
     renderAccountSection({ refreshFilters: true });
     renderCasesSection();
     renderApprovalsTable();
+    renderMySalesTargetSection();
+    renderMySalesDataSection();
+    renderEmployeeSalesDashboardSection();
     renderDashboard();
 }
 
@@ -3516,6 +3542,949 @@ function updateNotificationsUI(notifications = []) {
             </div>`;
     }
 }
+
+function groupSalesOrderItems(orderItems = []) {
+    const map = new Map();
+    orderItems.forEach((item) => {
+        if (!item?.sales_order_id) return;
+        const bucket = map.get(item.sales_order_id) || [];
+        bucket.push(item);
+        map.set(item.sales_order_id, bucket);
+    });
+    map.forEach((list) => list.sort((a, b) => (a.sequence || 0) - (b.sequence || 0)));
+    return map;
+}
+
+async function loadSalesExpansionData() {
+    try {
+        const [orders, accountTargets, productTargets, prices] = await Promise.all([
+            loadAllPages(
+                (offset, pageSize, page) => handleSupabase(
+                    supabase
+                        .from('v_sales_order_details')
+                        .select('*')
+                        .or(`specialist_id.eq.${state.session.employeeId},submitted_by_id.eq.${state.session.employeeId}`)
+                        .order('order_date', { ascending: false })
+                        .order('id', { ascending: false })
+                        .range(offset, offset + pageSize - 1),
+                    `load my sales orders page ${page}`
+                ),
+                { pageSize: 1000 }
+            ),
+            loadAllPages(
+                (offset, pageSize, page) => handleSupabase(
+                    supabase
+                        .from('sales_account_targets')
+                        .select('*')
+                        .eq('specialist_id', state.session.employeeId)
+                        .order('id', { ascending: true })
+                        .range(offset, offset + pageSize - 1),
+                    `load my sales account targets page ${page}`
+                ),
+                { pageSize: 1000 }
+            ),
+            loadAllPages(
+                (offset, pageSize, page) => handleSupabase(
+                    supabase
+                        .from('sales_product_targets')
+                        .select('*')
+                        .eq('specialist_id', state.session.employeeId)
+                        .order('id', { ascending: true })
+                        .range(offset, offset + pageSize - 1),
+                    `load my sales product targets page ${page}`
+                ),
+                { pageSize: 1000 }
+            ),
+            loadAllPages(
+                (offset, pageSize, page) => handleSupabase(
+                    supabase
+                        .from('sales_product_prices')
+                        .select('*')
+                        .order('product_id', { ascending: true })
+                        .range(offset, offset + pageSize - 1),
+                    `load sales product prices page ${page}`
+                ),
+                { pageSize: 1000 }
+            )
+        ]);
+        state.salesOrders = orders || [];
+
+        const validOrderIds = state.salesOrders.map((order) => order.id);
+        state.salesOrderItems = await loadAllByIdBatches(
+            validOrderIds,
+            (idBatch, offset, pageSize, page, batchIndex) => handleSupabase(
+                supabase
+                    .from('sales_order_items')
+                    .select('*')
+                    .in('sales_order_id', idBatch)
+                    .order('sales_order_id', { ascending: true })
+                    .order('sequence', { ascending: true })
+                    .order('id', { ascending: true })
+                    .range(offset, offset + pageSize - 1),
+                `load my sales order items batch ${batchIndex} page ${page}`
+            ),
+            { idBatchSize: 500, pageSize: 1000 }
+        );
+
+        state.salesOrderItemsByOrder = groupSalesOrderItems(state.salesOrderItems);
+        state.salesAccountTargets = accountTargets || [];
+        state.salesProductTargets = productTargets || [];
+        state.salesProductPrices = prices || [];
+    } catch (error) {
+        console.warn('Sales schema unavailable in employee:', error?.message || error);
+        state.salesOrders = [];
+        state.salesOrderItems = [];
+        state.salesOrderItemsByOrder = new Map();
+        state.salesAccountTargets = [];
+        state.salesProductTargets = [];
+        state.salesProductPrices = [];
+    }
+}
+
+function setupEmployeeSalesOrderForm() {
+    const container = document.querySelector('#employee-sales-order-form .row');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="col-12">
+            <div id="employee-sales-order-feedback" class="alert-feedback d-none"></div>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Account Name</label>
+            <select class="form-select" name="account_id" required>
+                <option value="">Select account</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Order Date</label>
+            <input type="date" class="form-control" name="order_date" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Order Type</label>
+            <select class="form-select" name="order_type" required>
+                <option value="company" selected>Company Order</option>
+                <option value="competitor">Competitor Order</option>
+            </select>
+        </div>
+        <div class="col-12">
+            <label class="form-label">Line</label>
+            <input type="text" class="form-control" name="line_name" readonly>
+            <input type="hidden" name="line_id">
+        </div>
+        <div class="col-12">
+            <label class="form-label">Products</label>
+            <div id="employee-sales-order-products" class="d-grid gap-3"></div>
+            <div class="d-flex justify-content-between mt-2">
+                <button type="button" class="btn btn-outline-ghost" id="employee-sales-order-add-product">Add Product</button>
+                <button type="button" class="btn btn-outline-ghost" id="employee-sales-order-remove-product">Remove Product</button>
+            </div>
+        </div>
+        <div class="col-12">
+            <label class="form-label">Comments</label>
+            <textarea class="form-control" name="notes" rows="2"></textarea>
+        </div>
+        <div class="col-12 d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-ghost" id="employee-sales-order-reset">Reset</button>
+            <button type="submit" class="btn btn-gradient">Submit Order</button>
+        </div>
+    `;
+
+    const form = document.getElementById('employee-sales-order-form');
+    if (!form) return;
+    const feedback = document.getElementById('employee-sales-order-feedback');
+    const accountSelect = form.querySelector('select[name="account_id"]');
+    const orderTypeSelect = form.querySelector('select[name="order_type"]');
+    const orderDateInput = form.querySelector('input[name="order_date"]');
+
+    makeSelectSearchable?.(accountSelect);
+
+    const resetForm = () => {
+        form.reset();
+        if (orderDateInput) orderDateInput.value = new Date().toISOString().slice(0, 10);
+        const myLineId = state.session.employee?.lineId || state.session.employee?.line_id || '';
+        const myLineName = state.session.employee?.lineName || state.session.employee?.line_name || '';
+        form.querySelector('input[name="line_id"]').value = myLineId;
+        form.querySelector('input[name="line_name"]').value = myLineName;
+        state.employeeSalesOrderFormRows = 1;
+        populateEmployeeSalesOrderAccounts();
+        renderEmployeeSalesOrderProductRows();
+        hideAlert(feedback);
+    };
+
+    form.addEventListener('submit', handleEmployeeSalesOrderSubmit);
+    form.addEventListener('mts:form-open', () => resetForm());
+    form.addEventListener('mts:form-close', () => hideAlert(feedback));
+    form.querySelector('#employee-sales-order-reset')?.addEventListener('click', resetForm);
+    form.querySelector('#employee-sales-order-add-product')?.addEventListener('click', () => {
+        if (state.employeeSalesOrderFormRows < MAX_PRODUCTS_PER_ORDER) {
+            state.employeeSalesOrderFormRows += 1;
+            renderEmployeeSalesOrderProductRows();
+        }
+    });
+    form.querySelector('#employee-sales-order-remove-product')?.addEventListener('click', () => {
+        if (state.employeeSalesOrderFormRows > 1) {
+            state.employeeSalesOrderFormRows -= 1;
+            renderEmployeeSalesOrderProductRows();
+        }
+    });
+    orderTypeSelect?.addEventListener('change', () => {
+        renderEmployeeSalesOrderProductRows();
+    });
+
+    resetForm();
+}
+
+function populateEmployeeSalesOrderAccounts(selectedId = '') {
+    const form = document.getElementById('employee-sales-order-form');
+    if (!form) return;
+    const accountSelect = form.querySelector('select[name="account_id"]');
+    if (!accountSelect) return;
+    const lineId = form.querySelector('input[name="line_id"]')?.value || '';
+    let accounts = state.accounts.filter((acc) => acc.status === APPROVAL_STATUS.APPROVED);
+    if (lineId) accounts = accounts.filter((acc) => String(acc.line_id) === String(lineId));
+    accounts = accounts.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    accountSelect.innerHTML = `
+        <option value="">Select account</option>
+        ${accounts.map((acc) => `<option value="${acc.id}">${escapeOptionText(acc.name || '')}</option>`).join('')}
+    `;
+    if (selectedId && accounts.some((acc) => String(acc.id) === String(selectedId))) {
+        accountSelect.value = String(selectedId);
+    }
+    makeSelectSearchable?.(accountSelect);
+}
+
+function getEmployeeSalesOrderProducts() {
+    const form = document.getElementById('employee-sales-order-form');
+    if (!form) return [];
+    const lineId = form.querySelector('input[name="line_id"]')?.value || '';
+    const orderType = form.querySelector('select[name="order_type"]')?.value || 'company';
+    return state.products.filter((product) => {
+        if (lineId && String(product.line_id) !== String(lineId)) return false;
+        return orderType === 'company' ? Boolean(product.is_company_product) : !product.is_company_product;
+    });
+}
+
+function getEmployeeProductDefaultPrice(productId) {
+    return Number(state.salesProductPrices.find((price) => String(price.product_id) === String(productId))?.unit_price || 0);
+}
+
+function renderEmployeeSalesOrderProductRows() {
+    const form = document.getElementById('employee-sales-order-form');
+    const container = document.getElementById('employee-sales-order-products');
+    if (!form || !container) return;
+    const orderType = form.querySelector('select[name="order_type"]')?.value || 'company';
+
+    const preserved = new Map();
+    container.querySelectorAll('[data-employee-sales-row]').forEach((rowEl) => {
+        const row = Number(rowEl.dataset.employeeSalesRow);
+        preserved.set(row, {
+            companyId: rowEl.querySelector(`[name="e_order_company_${row}"]`)?.value || '',
+            productId: rowEl.querySelector(`[name="e_order_product_${row}"]`)?.value || '',
+            units: rowEl.querySelector(`[name="e_order_units_${row}"]`)?.value || '0',
+            price: rowEl.querySelector(`[name="e_order_price_${row}"]`)?.value || ''
+        });
+    });
+
+    const products = getEmployeeSalesOrderProducts();
+    const companies = distinct(products.map((product) => `${product.company_id || ''}::${product.company_name || ''}`))
+        .map((key) => {
+            const [id, name] = String(key).split('::');
+            return id && name ? { id, name } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    container.innerHTML = '';
+    for (let row = 1; row <= state.employeeSalesOrderFormRows; row += 1) {
+        const saved = preserved.get(row) || {};
+        const rowEl = document.createElement('div');
+        rowEl.className = 'row g-3 align-items-end';
+        rowEl.dataset.employeeSalesRow = String(row);
+        rowEl.innerHTML = `
+            <div class="col-md-3">
+                <label class="form-label">Company ${row}</label>
+                <select class="form-select" name="e_order_company_${row}">
+                    <option value="">Select company</option>
+                    ${companies.map((company) => `<option value="${company.id}">${escapeOptionText(company.name)}</option>`).join('')}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Product ${row}</label>
+                <select class="form-select" name="e_order_product_${row}">
+                    <option value="">Select product</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Units</label>
+                <input type="number" class="form-control" name="e_order_units_${row}" min="1" value="${escapeOptionText(saved.units || '1')}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Unit Price</label>
+                <input type="number" class="form-control" name="e_order_price_${row}" min="0" step="0.01" placeholder="${orderType === 'competitor' ? 'Required' : 'Auto from target'}" value="${escapeOptionText(saved.price || '')}" ${orderType === 'competitor' ? 'required' : ''}>
+            </div>
+        `;
+        container.appendChild(rowEl);
+
+        const companySelect = rowEl.querySelector(`[name="e_order_company_${row}"]`);
+        const productSelect = rowEl.querySelector(`[name="e_order_product_${row}"]`);
+        const unitsInput = rowEl.querySelector(`[name="e_order_units_${row}"]`);
+        const priceInput = rowEl.querySelector(`[name="e_order_price_${row}"]`);
+
+        if (companySelect && saved.companyId) companySelect.value = saved.companyId;
+        populateEmployeeSalesOrderProductOptions(row, saved.companyId || '', saved.productId || '');
+        if (unitsInput && saved.units) unitsInput.value = saved.units;
+
+        if (priceInput) {
+            if (saved.price !== '') {
+                priceInput.value = saved.price;
+            } else if (orderType === 'company' && saved.productId) {
+                priceInput.value = String(getEmployeeProductDefaultPrice(saved.productId));
+            } else {
+                priceInput.value = '';
+            }
+        }
+
+        companySelect?.addEventListener('change', () => {
+            populateEmployeeSalesOrderProductOptions(row, companySelect.value, '');
+            if (priceInput && orderType === 'competitor') priceInput.value = '';
+        });
+        productSelect?.addEventListener('change', () => {
+            if (!priceInput) return;
+            if (orderType === 'company' && productSelect.value) {
+                priceInput.value = String(getEmployeeProductDefaultPrice(productSelect.value));
+            } else if (orderType === 'competitor') {
+                priceInput.value = '';
+            }
+        });
+    }
+}
+
+function populateEmployeeSalesOrderProductOptions(rowIndex, companyId, selectedProductId = '') {
+    const form = document.getElementById('employee-sales-order-form');
+    if (!form) return;
+    const orderType = form.querySelector('select[name="order_type"]')?.value || 'company';
+    const productSelect = form.querySelector(`[name="e_order_product_${rowIndex}"]`);
+    if (!productSelect) return;
+    const products = getEmployeeSalesOrderProducts()
+        .filter((product) => !companyId || String(product.company_id) === String(companyId))
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    productSelect.innerHTML = `
+        <option value="">Select product</option>
+        ${products.map((product) => `<option value="${product.id}">${escapeOptionText(product.name || '')}</option>`).join('')}
+    `;
+    if (selectedProductId && products.some((product) => String(product.id) === String(selectedProductId))) {
+        productSelect.value = String(selectedProductId);
+    }
+    if (orderType === 'company' && !selectedProductId) {
+        const first = products[0];
+        if (first) productSelect.value = String(first.id);
+    }
+}
+
+async function handleEmployeeSalesOrderSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const feedback = document.getElementById('employee-sales-order-feedback');
+    const submitButton = form.querySelector('button[type="submit"]');
+    hideAlert(feedback);
+
+    const formData = new FormData(form);
+    const payload = Object.fromEntries(formData.entries());
+    if (!payload.account_id || !payload.order_date || !payload.order_type || !payload.line_id) {
+        showAlert(feedback, 'Account, Order Date, Order Type, and Line are required.');
+        return;
+    }
+
+    const items = [];
+    for (let row = 1; row <= state.employeeSalesOrderFormRows; row += 1) {
+        const productId = payload[`e_order_product_${row}`];
+        const unitsRaw = payload[`e_order_units_${row}`];
+        const priceRaw = payload[`e_order_price_${row}`];
+        if (!productId && !unitsRaw && !priceRaw) continue;
+
+        const units = Number(unitsRaw);
+        if (!productId || Number.isNaN(units) || units <= 0) {
+            showAlert(feedback, `Row ${row}: product and units (> 0) are required.`);
+            return;
+        }
+        if (priceRaw === '' || priceRaw === null || priceRaw === undefined) {
+            showAlert(feedback, `Row ${row}: unit price is required.`);
+            return;
+        }
+        const unitPrice = Number(priceRaw);
+        if (Number.isNaN(unitPrice) || unitPrice < 0) {
+            showAlert(feedback, `Row ${row}: unit price must be 0 or greater.`);
+            return;
+        }
+
+        const product = state.products.find((item) => String(item.id) === String(productId));
+        if (!product) {
+            showAlert(feedback, `Row ${row}: selected product not found.`);
+            return;
+        }
+        if (String(product.line_id) !== String(payload.line_id)) {
+            showAlert(feedback, `Row ${row}: product line mismatch.`);
+            return;
+        }
+        if (payload.order_type === 'company' && !product.is_company_product) {
+            showAlert(feedback, `Row ${row}: only company products are allowed for company order.`);
+            return;
+        }
+        if (payload.order_type === 'competitor' && product.is_company_product) {
+            showAlert(feedback, `Row ${row}: only competitor products are allowed for competitor order.`);
+            return;
+        }
+
+        items.push({
+            sequence: items.length + 1,
+            product_id: product.id,
+            product_name: product.name,
+            company_id: product.company_id || null,
+            company_name: product.company_name || '',
+            is_company_product: Boolean(product.is_company_product),
+            units,
+            unit_price: unitPrice
+        });
+    }
+
+    if (!items.length) {
+        showAlert(feedback, 'Please add at least one product row.');
+        return;
+    }
+
+    try {
+        setLoadingState(submitButton, true, 'Submitting...');
+        const orderCode = `ORD-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${Date.now().toString(36).toUpperCase()}`;
+        const managerId = state.session.employee?.directManagerId || state.session.employee?.lineManagerId || null;
+        const inserted = await handleSupabase(
+            supabase.from('sales_orders').insert({
+                order_code: orderCode,
+                line_id: payload.line_id,
+                account_id: payload.account_id,
+                submitted_by: state.session.employeeId,
+                specialist_id: state.session.employeeId,
+                order_date: payload.order_date,
+                order_type: payload.order_type,
+                notes: payload.notes || null,
+                status: APPROVAL_STATUS.PENDING_MANAGER,
+                manager_id: managerId
+            }).select('id').single(),
+            'insert employee sales order'
+        );
+        await handleSupabase(
+            supabase.from('sales_order_items').insert(items.map((item) => ({ ...item, sales_order_id: inserted.id }))),
+            'insert employee sales order items'
+        );
+
+        await notifyManagerUsers('order', inserted.id, orderCode);
+        await loadSalesExpansionData();
+        buildApprovalDataset();
+        renderMySalesDataSection();
+        renderApprovalsTable();
+        renderMySalesTargetProducts();
+        renderEmployeeSalesDashboardSection();
+        showAlert(feedback, 'Sales order submitted for manager approval.', 'success');
+        closeFormModal();
+    } catch (error) {
+        showAlert(feedback, handleError(error));
+    } finally {
+        setLoadingState(submitButton, false);
+    }
+}
+
+function setupMySalesFilters() {
+    const container = document.getElementById('my-sales-filters');
+    if (!container) return;
+    const previousSelections = {
+        accountType: container.querySelector('#my-sales-filter-account-type')?.value || '',
+        orderType: container.querySelector('#my-sales-filter-order-type')?.value || '',
+        companyCompany: container.querySelector('#my-sales-filter-company-company')?.value || '',
+        companyCategory: container.querySelector('#my-sales-filter-company-category')?.value || '',
+        companySubCategory: container.querySelector('#my-sales-filter-company-sub-category')?.value || '',
+        companyProduct: container.querySelector('#my-sales-filter-company-product')?.value || '',
+        competitorCompany: container.querySelector('#my-sales-filter-competitor-company')?.value || '',
+        competitorCategory: container.querySelector('#my-sales-filter-competitor-category')?.value || '',
+        competitorSubCategory: container.querySelector('#my-sales-filter-competitor-sub-category')?.value || '',
+        competitorProduct: container.querySelector('#my-sales-filter-competitor-product')?.value || '',
+        accountName: container.querySelector('#my-sales-filter-account-name')?.value || ''
+    };
+    const { company, competitor } = collectDualRowFilterOptions(getEnrichedMySalesItems(state.salesOrderItems), state.products);
+    container.innerHTML = `
+        <div class="filters-row">
+            <select class="form-select" id="my-sales-filter-account-type">
+                <option value="">All Account Types</option>
+                ${ACCOUNT_TYPES.map((type) => `<option value="${type}">${type}</option>`).join('')}
+            </select>
+            <select class="form-select" id="my-sales-filter-order-type">
+                <option value="">All Order Types</option>
+                <option value="company">Company Order</option>
+                <option value="competitor">Competitor Order</option>
+            </select>
+            <input type="text" class="form-control" id="my-sales-filter-account-name" placeholder="Search Account Name...">
+            <div></div>
+        </div>
+        <div class="filters-row">
+            <select class="form-select" id="my-sales-filter-company-company">
+                <option value="">All Companies</option>
+                ${company.companies.map((item) => `<option value="${item}">${item}</option>`).join('')}
+            </select>
+            <select class="form-select" id="my-sales-filter-company-category">
+                <option value="">All Categories</option>
+                ${company.categories.map((item) => `<option value="${item}">${item}</option>`).join('')}
+            </select>
+            <select class="form-select" id="my-sales-filter-company-sub-category">
+                <option value="">All Sub Categories</option>
+                ${company.subCategories.map((item) => `<option value="${item}">${item}</option>`).join('')}
+            </select>
+            <select class="form-select" id="my-sales-filter-company-product">
+                <option value="">All Products</option>
+                ${company.productOptions.map((option) => `<option value="${option.value}">${option.label}</option>`).join('')}
+            </select>
+        </div>
+        <div class="filters-row">
+            <select class="form-select" id="my-sales-filter-competitor-company">
+                <option value="">All Companies</option>
+                ${competitor.companies.map((item) => `<option value="${item}">${item}</option>`).join('')}
+            </select>
+            <select class="form-select" id="my-sales-filter-competitor-category">
+                <option value="">All Categories</option>
+                ${competitor.categories.map((item) => `<option value="${item}">${item}</option>`).join('')}
+            </select>
+            <select class="form-select" id="my-sales-filter-competitor-sub-category">
+                <option value="">All Sub Categories</option>
+                ${competitor.subCategories.map((item) => `<option value="${item}">${item}</option>`).join('')}
+            </select>
+            <select class="form-select" id="my-sales-filter-competitor-product">
+                <option value="">All Products</option>
+                ${competitor.productOptions.map((option) => `<option value="${option.value}">${option.label}</option>`).join('')}
+            </select>
+        </div>
+    `;
+    const rerender = () => renderMySalesDataSection();
+    container.querySelectorAll('select').forEach((el) => el.addEventListener('change', rerender));
+    container.querySelector('#my-sales-filter-account-name')?.addEventListener('input', rerender);
+    const setSelectValue = (selector, value) => {
+        const el = container.querySelector(selector);
+        if (!el) return;
+        const hasValue = Array.from(el.options || []).some((option) => option.value === value);
+        el.value = hasValue ? value : '';
+    };
+    setSelectValue('#my-sales-filter-account-type', previousSelections.accountType);
+    setSelectValue('#my-sales-filter-order-type', previousSelections.orderType);
+    setSelectValue('#my-sales-filter-company-company', previousSelections.companyCompany);
+    setSelectValue('#my-sales-filter-company-category', previousSelections.companyCategory);
+    setSelectValue('#my-sales-filter-company-sub-category', previousSelections.companySubCategory);
+    setSelectValue('#my-sales-filter-company-product', previousSelections.companyProduct);
+    setSelectValue('#my-sales-filter-competitor-company', previousSelections.competitorCompany);
+    setSelectValue('#my-sales-filter-competitor-category', previousSelections.competitorCategory);
+    setSelectValue('#my-sales-filter-competitor-sub-category', previousSelections.competitorSubCategory);
+    setSelectValue('#my-sales-filter-competitor-product', previousSelections.competitorProduct);
+    const accountNameInput = container.querySelector('#my-sales-filter-account-name');
+    if (accountNameInput) accountNameInput.value = previousSelections.accountName;
+}
+
+function getFilteredMySalesOrders() {
+    const accountType = document.getElementById('my-sales-filter-account-type')?.value || '';
+    const orderType = document.getElementById('my-sales-filter-order-type')?.value || '';
+    const companyCompany = document.getElementById('my-sales-filter-company-company')?.value || '';
+    const companyCategory = document.getElementById('my-sales-filter-company-category')?.value || '';
+    const companySubCategory = document.getElementById('my-sales-filter-company-sub-category')?.value || '';
+    const companyProduct = document.getElementById('my-sales-filter-company-product')?.value || '';
+    const competitorCompany = document.getElementById('my-sales-filter-competitor-company')?.value || '';
+    const competitorCategory = document.getElementById('my-sales-filter-competitor-category')?.value || '';
+    const competitorSubCategory = document.getElementById('my-sales-filter-competitor-sub-category')?.value || '';
+    const competitorProduct = document.getElementById('my-sales-filter-competitor-product')?.value || '';
+    const accountName = (document.getElementById('my-sales-filter-account-name')?.value || '').trim().toLowerCase();
+    const hasCompanyFilters = Boolean(companyCompany || companyCategory || companySubCategory || companyProduct);
+    const hasCompetitorFilters = Boolean(competitorCompany || competitorCategory || competitorSubCategory || competitorProduct);
+
+    const matchesItemFilters = (item, filters = {}) => {
+        if (!item) return false;
+        if (filters.company && (item.company_name || '') !== filters.company) return false;
+        if (filters.category && (item.category || '') !== filters.category) return false;
+        if (filters.subCategory && (item.sub_category || '') !== filters.subCategory) return false;
+        if (filters.product && String(item.product_id || '') !== String(filters.product) && item.product_name !== filters.product) return false;
+        return true;
+    };
+
+    return state.salesOrders.filter((order) => {
+        if (accountType && order.account_type !== accountType) return false;
+        if (orderType && order.order_type !== orderType) return false;
+        if (accountName && !(order.account_name || '').toLowerCase().includes(accountName)) return false;
+        if (hasCompanyFilters || hasCompetitorFilters) {
+            const items = getEnrichedMySalesItems(state.salesOrderItemsByOrder.get(order.id) || []);
+            if (hasCompanyFilters) {
+                const hasCompanyMatch = items.some((item) => item.is_company_product && matchesItemFilters(item, {
+                    company: companyCompany,
+                    category: companyCategory,
+                    subCategory: companySubCategory,
+                    product: companyProduct
+                }));
+                if (!hasCompanyMatch) return false;
+            }
+            if (hasCompetitorFilters) {
+                const hasCompetitorMatch = items.some((item) => !item.is_company_product && matchesItemFilters(item, {
+                    company: competitorCompany,
+                    category: competitorCategory,
+                    subCategory: competitorSubCategory,
+                    product: competitorProduct
+                }));
+                if (!hasCompetitorMatch) return false;
+            }
+        }
+        return true;
+    });
+}
+
+function getEnrichedMySalesItems(items = []) {
+    return items.map((item) => {
+        const product = item.product_id ? state.products.find((p) => String(p.id) === String(item.product_id)) : null;
+        return {
+            ...item,
+            company_name: item.company_name || product?.company_name || '',
+            category: item.category || product?.category || '',
+            sub_category: item.sub_category || product?.sub_category || '',
+            product_name: item.product_name || product?.name || '',
+            is_company_product: typeof item.is_company_product === 'boolean' ? item.is_company_product : Boolean(product?.is_company_product)
+        };
+    });
+}
+
+function ceilSalesStatNumber(value) {
+    const numeric = Number(value || 0);
+    if (!Number.isFinite(numeric)) return 0;
+    return Math.ceil(numeric);
+}
+
+function formatSalesStatValue(value) {
+    return formatNumber(ceilSalesStatNumber(value));
+}
+
+function formatSalesStatPercent(value) {
+    return `${formatNumber(ceilSalesStatNumber(value))}%`;
+}
+
+function getMySalesMetricScopeFromFilters() {
+    const myId = String(state.session.employeeId || '');
+    const accountType = document.getElementById('my-sales-filter-account-type')?.value || '';
+    const accountName = (document.getElementById('my-sales-filter-account-name')?.value || '').trim().toLowerCase();
+
+    let scopedAccounts = state.accounts.filter((acc) =>
+        acc.status === APPROVAL_STATUS.APPROVED && String(acc.owner_employee_id) === myId
+    );
+    if (accountType) scopedAccounts = scopedAccounts.filter((acc) => acc.account_type === accountType);
+    if (accountName) scopedAccounts = scopedAccounts.filter((acc) => (acc.name || '').toLowerCase().includes(accountName));
+
+    const accountKeys = new Set(scopedAccounts.map((acc) => `${acc.id}::${acc.owner_employee_id}`));
+    const relevantAccountTargets = state.salesAccountTargets.filter((target) =>
+        accountKeys.has(`${target.account_id || ''}::${target.specialist_id || ''}`)
+    );
+    const relevantProductTargets = state.salesProductTargets.filter((target) => String(target.specialist_id || '') === myId);
+
+    return { relevantAccountTargets, relevantProductTargets };
+}
+
+function computeMySalesSummaryMetrics(orders = [], scope = null) {
+    const dmcUnits = orders.reduce((sum, item) => sum + Number(item.total_company_units || 0), 0);
+    const dmcValue = orders.reduce((sum, item) => sum + Number(item.total_company_value || 0), 0);
+    const competitorUnits = orders.reduce((sum, item) => sum + Number(item.total_competitor_units || 0), 0);
+    const competitorValue = orders.reduce((sum, item) => sum + Number(item.total_competitor_value || 0), 0);
+
+    const myId = String(state.session.employeeId || '');
+    const relevantAccountTargets = scope?.relevantAccountTargets
+        || state.salesAccountTargets.filter((target) => String(target.specialist_id) === myId);
+    const relevantProductTargets = scope?.relevantProductTargets
+        || state.salesProductTargets.filter((target) => String(target.specialist_id) === myId);
+
+    const scopedOrderIds = new Set(orders.map((order) => String(order.id)));
+    const scopedItems = getEnrichedMySalesItems(state.salesOrderItems.filter((item) => scopedOrderIds.has(String(item.sales_order_id))));
+
+    const accountSalesValueMap = new Map();
+    const productSalesUnitsMap = new Map();
+    orders.forEach((order) => {
+        const orderItems = scopedItems.filter((item) => String(item.sales_order_id) === String(order.id));
+        const companyValue = orderItems
+            .filter((item) => item.is_company_product)
+            .reduce((sum, item) => sum + (Number(item.units || 0) * Number(item.unit_price || 0)), 0);
+        const accountKey = `${order.account_id || ''}::${order.specialist_id || ''}`;
+        accountSalesValueMap.set(accountKey, (accountSalesValueMap.get(accountKey) || 0) + companyValue);
+        orderItems.filter((item) => item.is_company_product).forEach((item) => {
+            const productKey = `${item.product_id || ''}::${order.specialist_id || ''}`;
+            productSalesUnitsMap.set(productKey, (productSalesUnitsMap.get(productKey) || 0) + Number(item.units || 0));
+        });
+    });
+
+    const targetValue = relevantAccountTargets.reduce((sum, target) => sum + Number(target.target_value || 0), 0);
+    const accountAchievementRatios = relevantAccountTargets
+        .filter((target) => Number(target.target_value || 0) > 0)
+        .map((target) => {
+            const key = `${target.account_id || ''}::${target.specialist_id || ''}`;
+            const actual = accountSalesValueMap.get(key) || 0;
+            return (actual / Number(target.target_value || 1)) * 100;
+        });
+
+    const latestProductTargets = new Map();
+    relevantProductTargets.forEach((target) => {
+        const key = `${target.product_id || ''}::${target.specialist_id || ''}`;
+        const prev = latestProductTargets.get(key);
+        if (!prev || new Date(prev.effective_from || 0) < new Date(target.effective_from || 0)) {
+            latestProductTargets.set(key, target);
+        }
+    });
+    const unitAchievementRatios = Array.from(latestProductTargets.values())
+        .filter((target) => Number(target.target_units || 0) > 0)
+        .map((target) => {
+            const key = `${target.product_id || ''}::${target.specialist_id || ''}`;
+            const actual = productSalesUnitsMap.get(key) || 0;
+            return (actual / Number(target.target_units || 1)) * 100;
+        });
+
+    const valueAchievement = targetValue > 0 ? (dmcValue / targetValue) * 100 : 0;
+    const unitsAchievementAvg = unitAchievementRatios.length ? unitAchievementRatios.reduce((a, b) => a + b, 0) / unitAchievementRatios.length : 0;
+    const accountsAchievementAvg = accountAchievementRatios.length ? accountAchievementRatios.reduce((a, b) => a + b, 0) / accountAchievementRatios.length : 0;
+
+    return {
+        dmcUnits,
+        dmcValue,
+        targetValue,
+        valueAchievement,
+        unitsAchievementAvg,
+        accountsAchievementAvg,
+        competitorUnits,
+        competitorValue
+    };
+}
+
+function buildMySalesRow(order) {
+    const items = state.salesOrderItemsByOrder.get(order.id) || [];
+    const row = {
+        id: order.id,
+        specialist: order.specialist_name || order.submitted_by_name || '',
+        line: order.line_name || '',
+        status: order.status,
+        account: order.account_name || '',
+        account_type: order.account_type || '',
+        order_date: order.order_date,
+        order_code: order.order_code || '',
+        dmc_units: order.total_company_units || 0,
+        dmc_value: order.total_company_value || 0,
+        competitor_units: order.total_competitor_units || 0,
+        competitor_value: order.total_competitor_value || 0
+    };
+    for (let i = 1; i <= 20; i += 1) {
+        const item = items[i - 1];
+        row[`product${i}_name`] = item?.product_name || '';
+        row[`product${i}_company`] = item?.company_name || '';
+        row[`product${i}_units`] = item?.units || 0;
+        row[`product${i}_price`] = item?.unit_price || 0;
+    }
+    return row;
+}
+
+function buildMySalesColumns() {
+    const columns = [
+        { title: 'Product Specialist', field: 'specialist', minWidth: 200, headerFilter: 'input', frozen: true },
+        { title: 'Line', field: 'line', width: 150, headerFilter: 'input' },
+        { title: 'Status', field: 'status', formatter: tableFormatters.status, width: 140 },
+        { title: 'Account Name', field: 'account', minWidth: 180, headerFilter: 'input' },
+        { title: 'Account Type', field: 'account_type', width: 140 },
+        { title: 'Date', field: 'order_date', formatter: tableFormatters.date, width: 140 }
+    ];
+    for (let i = 1; i <= 20; i += 1) {
+        columns.push({ title: `Product ${i}`, field: `product${i}_name`, minWidth: 160, visible: false });
+        columns.push({ title: `P${i} Company`, field: `product${i}_company`, minWidth: 150, visible: false });
+        columns.push({ title: `P${i} Units`, field: `product${i}_units`, formatter: tableFormatters.number(), width: 120, visible: false });
+        columns.push({ title: `P${i} Price`, field: `product${i}_price`, formatter: tableFormatters.number(2), width: 120, visible: false });
+    }
+    columns.push({ title: 'DMC Units', field: 'dmc_units', formatter: tableFormatters.number(), width: 130 });
+    columns.push({ title: 'DMC Value', field: 'dmc_value', formatter: tableFormatters.number(2), width: 140 });
+    columns.push({ title: 'Competitor Units', field: 'competitor_units', formatter: tableFormatters.number(), width: 150 });
+    columns.push({ title: 'Competitor Value', field: 'competitor_value', formatter: tableFormatters.number(2), width: 150 });
+    columns.push({
+        title: 'Actions',
+        field: 'actions',
+        width: 120,
+        hozAlign: 'center',
+        formatter: tableFormatters.actions([{ name: 'view', label: 'View', icon: 'bi bi-eye', variant: 'btn-gradient' }]),
+        headerSort: false
+    });
+    return columns;
+}
+
+function renderMySalesDataSection() {
+    const orders = getFilteredMySalesOrders();
+    const scope = getMySalesMetricScopeFromFilters();
+    const stats = document.getElementById('my-sales-stat-cards');
+    if (stats) {
+        const metrics = computeMySalesSummaryMetrics(orders, scope);
+        stats.innerHTML = `
+            <div class="stat-card"><h4>DMC Unit</h4><div class="value">${formatSalesStatValue(metrics.dmcUnits)}</div></div>
+            <div class="stat-card"><h4>DMC Value</h4><div class="value">${formatSalesStatValue(metrics.dmcValue)}</div></div>
+            <div class="stat-card"><h4>Target Value</h4><div class="value">${formatSalesStatValue(metrics.targetValue)}</div></div>
+            <div class="stat-card"><h4>Achievement</h4><div class="value">${formatSalesStatPercent(metrics.valueAchievement)}</div></div>
+            <div class="stat-card"><h4>Units Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.unitsAchievementAvg)}</div></div>
+            <div class="stat-card"><h4>Accounts Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.accountsAchievementAvg)}</div></div>
+            <div class="stat-card"><h4>Competitor Units</h4><div class="value">${formatSalesStatValue(metrics.competitorUnits)}</div></div>
+            <div class="stat-card"><h4>Competitor Value</h4><div class="value">${formatSalesStatValue(metrics.competitorValue)}</div></div>
+        `;
+    }
+    state.tables.mySales = createTable('my-sales-table', buildMySalesColumns(), orders.map((o) => buildMySalesRow(o)), {
+        height: 520,
+        initialSort: [{ column: 'order_date', dir: 'desc' }]
+    });
+    bindTableActions(state.tables.mySales, {
+        view: (rowData) => viewMySalesOrder(rowData.id)
+    });
+}
+
+function setupMySalesTargetAccountFilters() {
+    const container = document.getElementById('my-sales-target-accounts-filters');
+    if (!container) return;
+    container.innerHTML = `
+        <select class="form-select" id="my-sales-target-account-type">
+            <option value="">All Account Types</option>
+            ${ACCOUNT_TYPES.map((type) => `<option value="${type}">${type}</option>`).join('')}
+        </select>
+    `;
+    container.querySelector('#my-sales-target-account-type')?.addEventListener('change', () => renderMySalesTargetAccounts());
+}
+
+function renderMySalesTargetAccounts() {
+    const accountType = document.getElementById('my-sales-target-account-type')?.value || '';
+    let accounts = state.accounts.filter((acc) => acc.status === APPROVAL_STATUS.APPROVED && String(acc.owner_employee_id) === String(state.session.employeeId));
+    if (accountType) accounts = accounts.filter((acc) => acc.account_type === accountType);
+    const targetMap = new Map(state.salesAccountTargets.map((target) => [String(target.account_id), target]));
+    const data = accounts.map((acc) => ({
+        id: acc.id,
+        account: acc.name,
+        specialist: acc.owner_name || state.session.employee?.fullName || '',
+        line: acc.line_name || '',
+        target_value: Number(targetMap.get(String(acc.id))?.target_value || 0)
+    }));
+    const stats = document.getElementById('my-sales-target-accounts-stats');
+    if (stats) {
+        stats.innerHTML = `
+            <div class="stat-card"><h4>Accounts Number</h4><div class="value">${formatNumber(data.length)}</div></div>
+            <div class="stat-card"><h4>Accounts Target</h4><div class="value">${formatNumber(data.reduce((s, i) => s + Number(i.target_value || 0), 0), 2)}</div></div>
+        `;
+    }
+    state.tables.mySalesTargetAccounts = createTable('my-sales-target-accounts-table', [
+        { title: 'Account', field: 'account', minWidth: 220, headerFilter: 'input' },
+        { title: 'Product Specialist', field: 'specialist', minWidth: 220, headerFilter: 'input' },
+        { title: 'Line', field: 'line', width: 160, headerFilter: 'input' },
+        { title: 'Target Value', field: 'target_value', formatter: tableFormatters.number(2), width: 170 }
+    ], data, { height: 500 });
+}
+
+function setupMySalesTargetProductFilters() {
+    const container = document.getElementById('my-sales-target-products-filters');
+    if (!container) return;
+    container.innerHTML = '<div class="text-secondary">Filtered by your line and assignments.</div>';
+}
+
+function renderMySalesTargetProducts() {
+    const myLineId = state.session.employee?.lineId || state.session.employee?.line_id || null;
+    const products = state.products.filter((product) => product.is_company_product && (!myLineId || product.line_id === myLineId));
+    const pricesByProduct = new Map(state.salesProductPrices.map((price) => [String(price.product_id), Number(price.unit_price || 0)]));
+    const targetsByProduct = new Map();
+    state.salesProductTargets.forEach((target) => {
+        if (String(target.specialist_id) !== String(state.session.employeeId)) return;
+        const prev = targetsByProduct.get(String(target.product_id));
+        if (!prev || new Date(prev.effective_from || 0) < new Date(target.effective_from || 0)) targetsByProduct.set(String(target.product_id), target);
+    });
+    const data = products.map((product) => {
+        const target = targetsByProduct.get(String(product.id));
+        return {
+            id: product.id,
+            product_name: product.name,
+            target_units: Number(target?.target_units || 0),
+            target_value: Number(target?.target_value || 0),
+            unit_price: pricesByProduct.get(String(product.id)) || 0
+        };
+    });
+    const stats = document.getElementById('my-sales-target-products-stats');
+    if (stats) {
+        const orders = getFilteredMySalesOrders();
+        stats.innerHTML = `
+            <div class="stat-card"><h4>DMC Sales Units</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_company_units || 0), 0))}</div></div>
+            <div class="stat-card"><h4>DMC Sales Value</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_company_value || 0), 0), 2)}</div></div>
+            <div class="stat-card"><h4>Competitor Units</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_competitor_units || 0), 0))}</div></div>
+            <div class="stat-card"><h4>Competitor Value</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_competitor_value || 0), 0), 2)}</div></div>
+        `;
+    }
+    state.tables.mySalesTargetProducts = createTable('my-sales-target-products-table', [
+        { title: 'Product', field: 'product_name', minWidth: 220, headerFilter: 'input', frozen: true },
+        { title: 'Target Units', field: 'target_units', formatter: tableFormatters.number(), width: 140 },
+        { title: 'Target Value', field: 'target_value', formatter: tableFormatters.number(2), width: 160 },
+        { title: 'Unit Price', field: 'unit_price', formatter: tableFormatters.number(2), width: 140 }
+    ], data, { height: 520 });
+}
+
+function renderMySalesTargetSection() {
+    renderMySalesTargetAccounts();
+    renderMySalesTargetProducts();
+}
+
+function setupEmployeeSalesDashboardFilters() {
+    const container = document.getElementById('employee-sales-dashboard-filters');
+    if (!container) return;
+    container.innerHTML = '<div class="text-secondary">Sales dashboard filters placeholder.</div>';
+}
+
+function renderEmployeeSalesDashboardSection() {
+    const stats = document.getElementById('employee-sales-dashboard-stat-cards');
+    if (!stats) return;
+    const orders = getFilteredMySalesOrders();
+    const metrics = computeMySalesSummaryMetrics(orders, getMySalesMetricScopeFromFilters());
+    stats.innerHTML = `
+        <div class="stat-card"><h4>DMC Unit</h4><div class="value">${formatSalesStatValue(metrics.dmcUnits)}</div></div>
+        <div class="stat-card"><h4>DMC Value</h4><div class="value">${formatSalesStatValue(metrics.dmcValue)}</div></div>
+        <div class="stat-card"><h4>Target Value</h4><div class="value">${formatSalesStatValue(metrics.targetValue)}</div></div>
+        <div class="stat-card"><h4>Achievement</h4><div class="value">${formatSalesStatPercent(metrics.valueAchievement)}</div></div>
+        <div class="stat-card"><h4>Units Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.unitsAchievementAvg)}</div></div>
+        <div class="stat-card"><h4>Accounts Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.accountsAchievementAvg)}</div></div>
+        <div class="stat-card"><h4>Competitor Units</h4><div class="value">${formatSalesStatValue(metrics.competitorUnits)}</div></div>
+        <div class="stat-card"><h4>Competitor Value</h4><div class="value">${formatSalesStatValue(metrics.competitorValue)}</div></div>
+    `;
+}
+
+function viewMySalesOrder(id) {
+    const orderRecord = state.salesOrders.find((item) => item.id === id) || {};
+    const products = state.salesOrderItemsByOrder.get(id) || [];
+    const specialist = orderRecord.specialist_name || orderRecord.submitted_by_name || 'N/A';
+    const account = orderRecord.account_name || 'N/A';
+    const status = orderRecord.status || 'Pending';
+    const orderDate = orderRecord.order_date ? formatDate(orderRecord.order_date) : 'N/A';
+    const notes = orderRecord.notes || 'No additional notes provided.';
+    const orderType = orderRecord.order_type || 'company';
+    const productsBody = products.length
+        ? products.map((product, index) => `<tr><td>${index + 1}</td><td>${product.product_name || 'Unnamed Product'}</td><td>${product.company_name || ''}</td><td>${formatNumber(product.units || 0)}</td><td>${formatNumber(product.unit_price || 0, 2)}</td></tr>`).join('')
+        : `<tr><td colspan="5" class="text-center text-secondary">No products attached.</td></tr>`;
+    const content = `
+        <div class="case-review">
+            <div class="row g-3">
+                <div class="col-md-6"><div class="review-field"><span>Order Code</span><strong>${orderRecord.order_code || 'N/A'}</strong></div></div>
+                <div class="col-md-6"><div class="review-field"><span>Order Date</span><strong>${orderDate}</strong></div></div>
+                <div class="col-md-6"><div class="review-field"><span>Product Specialist</span><strong>${specialist}</strong></div></div>
+                <div class="col-md-6"><div class="review-field"><span>Status</span><strong>${status}</strong></div></div>
+                <div class="col-md-6"><div class="review-field"><span>Order Type</span><strong>${orderType}</strong></div></div>
+                <div class="col-md-6"><div class="review-field"><span>Account</span><strong>${account}</strong></div></div>
+            </div>
+            <div class="mt-4"><h6 class="text-secondary text-uppercase mb-2">Products</h6><div class="table-responsive rounded"><table class="table table-dark table-sm align-middle mb-0"><thead><tr class="text-secondary"><th>#</th><th>Product</th><th>Company</th><th>Units</th><th>Unit Price</th></tr></thead><tbody>${productsBody}</tbody></table></div></div>
+            <div class="mt-4"><h6 class="text-secondary text-uppercase mb-2">Notes</h6><p class="mb-0">${notes}</p></div>
+        </div>
+    `;
+
+    const modalEl = document.getElementById('modalEntityForm');
+    if (!modalEl || !window.bootstrap) return;
+    const modalTitle = modalEl.querySelector('.modal-title');
+    const modalBody = modalEl.querySelector('#modalEntityFormBody');
+    const modalFooter = modalEl.querySelector('.modal-footer');
+    if (modalTitle) modalTitle.textContent = `Review Order ${orderRecord.order_code || ''}`;
+    if (modalBody) modalBody.innerHTML = content;
+    if (modalFooter) modalFooter.classList.add('d-none');
+    const modalInstance = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+    modalInstance.show();
+}
 async function loadProducts() {
     const employeeLineId = state.session.employee?.lineId;
 
@@ -3586,58 +4555,38 @@ async function loadAccounts() {
 }
 
 async function loadCases() {
-    // First load cases
-    const cases = await handleSupabase(
-        supabase
-            .from('v_case_details')
-            .select('*')
-            .eq('submitted_by_id', state.session.employeeId)
-            .neq('status', APPROVAL_STATUS.REJECTED)
-            .order('case_date', { ascending: false }),
-        'load my cases'
+    state.cases = await loadAllPages(
+        (offset, pageSize, page) => handleSupabase(
+            supabase
+                .from('v_case_details')
+                .select('*')
+                .eq('submitted_by_id', state.session.employeeId)
+                .neq('status', APPROVAL_STATUS.REJECTED)
+                .order('case_date', { ascending: false })
+                .order('id', { ascending: false })
+                .range(offset, offset + pageSize - 1),
+            `load my cases page ${page}`
+        ),
+        { pageSize: 1000 }
     );
 
-    state.cases = cases || [];
+    const caseIds = state.cases.map((item) => item.id);
+    state.caseProducts = await loadAllByIdBatches(
+        caseIds,
+        (idBatch, offset, pageSize, page, batchIndex) => handleSupabase(
+            supabase
+                .from('case_products')
+                .select('case_id, product_id, product_name, company_name, category, sub_category, is_company_product, units, sequence')
+                .in('case_id', idBatch)
+                .order('case_id', { ascending: true })
+                .order('sequence', { ascending: true })
+                .order('product_id', { ascending: true })
+                .range(offset, offset + pageSize - 1),
+            `load my case products batch ${batchIndex} page ${page}`
+        ),
+        { idBatchSize: 500, pageSize: 1000 }
+    );
 
-    // Then load products only for those cases (batch if needed)
-    const allProducts = [];
-    if (state.cases.length > 0) {
-        const caseIds = state.cases.map(c => c.id);
-        const CASE_ID_BATCH_SIZE = 500; // Supabase .in() limit is ~1000, use 500 to be safe
-        const PRODUCT_BATCH_SIZE = 1000;
-
-        for (let i = 0; i < caseIds.length; i += CASE_ID_BATCH_SIZE) {
-            const batchIds = caseIds.slice(i, i + CASE_ID_BATCH_SIZE);
-
-            // For each batch of case IDs, load ALL products using .range() pagination
-            // IMPORTANT: Reset offset for each new batch of case IDs!
-            let offset = 0;
-            let hasMore = true;
-
-            while (hasMore) {
-                const products = await handleSupabase(
-                    supabase
-                        .from('case_products')
-                        .select('case_id, product_id, product_name, company_name, category, sub_category, is_company_product, units, sequence')
-                        .in('case_id', batchIds)
-                        .order('case_id', { ascending: true })
-                        .order('sequence', { ascending: true })
-                        .range(offset, offset + PRODUCT_BATCH_SIZE - 1),
-                    `load my case products for case batch ${Math.floor(i / CASE_ID_BATCH_SIZE) + 1}, product page ${offset / PRODUCT_BATCH_SIZE + 1}`
-                );
-
-                if (products && products.length > 0) {
-                    allProducts.push(...products);
-                    offset += PRODUCT_BATCH_SIZE;
-                    hasMore = products.length === PRODUCT_BATCH_SIZE;
-                } else {
-                    hasMore = false;
-                }
-            }
-        }
-    }
-
-    state.caseProducts = allProducts;
     state.caseProductsByCase = groupCaseProducts(state.caseProducts);
 
     // Debug logging
@@ -3678,6 +4627,15 @@ function buildApprovalDataset() {
                 name: caseItem.case_code,
                 status: caseItem.status,
                 created_at: caseItem.created_at
+            })),
+        ...state.salesOrders
+            .filter((orderItem) => orderItem.status !== APPROVAL_STATUS.APPROVED)
+            .map((orderItem) => ({
+                id: orderItem.id,
+                type: 'order',
+                name: orderItem.order_code,
+                status: orderItem.status,
+                created_at: orderItem.created_at
             }))
     ];
 }

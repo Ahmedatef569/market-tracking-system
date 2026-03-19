@@ -150,7 +150,22 @@ a:hover {
     white-space: nowrap;
 }
 
+.nav-section-title {
+    margin: 10px 12px 6px;
+    padding: 0 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.78);
+    opacity: 0.72;
+}
+
 .sidebar.collapsed .nav-link .text {
+    display: none;
+}
+
+.sidebar.collapsed .nav-section-title {
     display: none;
 }
 
@@ -1384,6 +1399,10 @@ body[data-theme='light'] .nav-link.active {
 
 body[data-theme='light'] .nav-link.active .icon {
     color: white;
+}
+
+body[data-theme='light'] .nav-section-title {
+    color: rgba(255, 255, 255, 0.78);
 }
 
 body[data-theme='light'] .theme-toggle {
