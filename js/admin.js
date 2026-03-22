@@ -3976,10 +3976,15 @@ async function deleteCase(caseId) {
     }
 }
 function renderApprovalsTable() {
-    const filtered = state.approvals.filter((item) => item.status !== APPROVAL_STATUS.REJECTED && item.status !== APPROVAL_STATUS.APPROVED);
+    const filtered = state.approvals
+        .filter((item) => item.status !== APPROVAL_STATUS.REJECTED && item.status !== APPROVAL_STATUS.APPROVED)
+        .map((item) => ({
+            ...item,
+            type_display: item.type === 'order' && item.payload?.is_reorder ? 're-order' : item.type
+        }));
 
     const columns = [
-        { title: 'Type', field: 'type', width: 110, headerFilter: 'input' },
+        { title: 'Type', field: 'type_display', width: 110, headerFilter: 'input' },
         { title: 'Name / Code', field: 'name', minWidth: 200, headerFilter: 'input' },
         { title: 'Product Specialist', field: 'ownerName', minWidth: 200, headerFilter: 'input' },
         { title: 'Line', field: 'lineName', width: 150, headerFilter: 'input' },
@@ -4156,6 +4161,7 @@ async function processApproval(record, approve = true) {
                 );
             }
             await removeAdminNotification('order', record.id);
+            await removeAdminNotification('re-order', record.id);
         }
 
         const targetEmployeeId = payload.owner_employee_id || payload.submitted_by_id || payload.specialist_id;
@@ -4270,7 +4276,10 @@ function filterApprovals() {
         if (type && item.type !== type) return false;
         if (status && item.status !== status) return false;
         return true;
-    });
+    }).map((item) => ({
+        ...item,
+        type_display: item.type === 'order' && item.payload?.is_reorder ? 're-order' : item.type
+    }));
 
     state.tables.approvals?.setData(filtered);
 }
@@ -7333,6 +7342,9 @@ function setupAdminSalesOrderForm() {
         if (orderDateInput) orderDateInput.value = new Date().toISOString().slice(0, 10);
         const oldestLine = getOldestSalesLine();
         if (lineSelect && oldestLine) lineSelect.value = oldestLine;
+        delete form.dataset.editOrderId;
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.textContent = 'Submit Order';
         state.adminSalesOrderFormRows = 1;
         populateAdminSalesOrderSpecialists();
         renderAdminSalesOrderProductRows();
@@ -7493,8 +7505,9 @@ function renderAdminSalesOrderProductRows() {
         if (priceInput) {
             if (saved.price !== '') {
                 priceInput.value = saved.price;
-            } else if (orderType === 'company' && saved.productId) {
-                priceInput.value = String(getAdminProductDefaultPrice(saved.productId));
+            } else if (orderType === 'company') {
+                const selectedProductId = saved.productId || productSelect?.value || '';
+                priceInput.value = selectedProductId ? String(getAdminProductDefaultPrice(selectedProductId)) : '';
             } else {
                 priceInput.value = '';
             }
@@ -7534,6 +7547,12 @@ function populateAdminSalesOrderProductOptions(rowIndex, companyId, selectedProd
     if (orderType === 'company' && !selectedProductId) {
         const first = products[0];
         if (first) productSelect.value = String(first.id);
+    }
+
+    const priceInput = form.querySelector(`[name="order_price_${rowIndex}"]`);
+    if (priceInput && orderType === 'company') {
+        const selectedProduct = productSelect.value;
+        priceInput.value = selectedProduct ? String(getAdminProductDefaultPrice(selectedProduct)) : '';
     }
 }
 
@@ -7613,26 +7632,68 @@ async function handleAdminSalesOrderSubmit(event) {
     try {
         setLoadingState(submitButton, true, 'Submitting...');
         const specialist = state.employeeById?.get(String(payload.specialist_id));
-        const inserted = await handleSupabase(
-            supabase.from('sales_orders').insert({
-                order_code: generateOrderCode(),
-                line_id: payload.line_id,
-                account_id: payload.account_id,
-                submitted_by: state.session.employeeId,
-                specialist_id: payload.specialist_id,
-                order_date: payload.order_date,
-                order_type: payload.order_type,
-                notes: payload.notes || null,
-                status: APPROVAL_STATUS.APPROVED,
-                manager_id: specialist?.direct_manager_id || specialist?.line_manager_id || null,
-                admin_id: state.session.employeeId
-            }).select('id').single(),
-            'insert admin sales order'
-        );
-        await handleSupabase(
-            supabase.from('sales_order_items').insert(items.map((item) => ({ ...item, sales_order_id: inserted.id }))),
-            'insert admin sales order items'
-        );
+        const editOrderId = form.dataset.editOrderId || '';
+
+        if (editOrderId) {
+            const previous = state.salesOrders.find((order) => String(order.id) === String(editOrderId));
+            await handleSupabase(
+                supabase
+                    .from('sales_orders')
+                    .update({
+                        line_id: payload.line_id,
+                        account_id: payload.account_id,
+                        specialist_id: payload.specialist_id,
+                        order_date: payload.order_date,
+                        order_type: payload.order_type,
+                        notes: payload.notes || null,
+                        status: APPROVAL_STATUS.APPROVED,
+                        manager_id: specialist?.direct_manager_id || specialist?.line_manager_id || null,
+                        admin_id: state.session.employeeId,
+                        manager_comment: null,
+                        admin_comment: null,
+                        approved_at: new Date().toISOString(),
+                        rejected_at: null,
+                        submitted_at: new Date().toISOString(),
+                        is_reorder: true,
+                        reorder_count: Number(previous?.reorder_count || 0) + 1,
+                        reordered_at: new Date().toISOString(),
+                        reordered_by: state.session.employeeId
+                    })
+                    .eq('id', editOrderId),
+                'update admin sales re-order'
+            );
+            await handleSupabase(
+                supabase.from('sales_order_items').delete().eq('sales_order_id', editOrderId),
+                'delete previous admin sales order items'
+            );
+            await handleSupabase(
+                supabase.from('sales_order_items').insert(items.map((item) => ({ ...item, sales_order_id: editOrderId }))),
+                'insert admin sales re-order items'
+            );
+        } else {
+            const inserted = await handleSupabase(
+                supabase.from('sales_orders').insert({
+                    order_code: generateOrderCode(),
+                    line_id: payload.line_id,
+                    account_id: payload.account_id,
+                    submitted_by: state.session.employeeId,
+                    specialist_id: payload.specialist_id,
+                    order_date: payload.order_date,
+                    order_type: payload.order_type,
+                    notes: payload.notes || null,
+                    status: APPROVAL_STATUS.APPROVED,
+                    manager_id: specialist?.direct_manager_id || specialist?.line_manager_id || null,
+                    admin_id: state.session.employeeId,
+                    is_reorder: false,
+                    reorder_count: 0
+                }).select('id').single(),
+                'insert admin sales order'
+            );
+            await handleSupabase(
+                supabase.from('sales_order_items').insert(items.map((item) => ({ ...item, sales_order_id: inserted.id }))),
+                'insert admin sales order items'
+            );
+        }
 
         await loadSalesOrders();
         buildApprovalsDataset();
@@ -7640,7 +7701,7 @@ async function handleAdminSalesOrderSubmit(event) {
         renderSalesTargetProducts();
         renderApprovalsTable();
         renderSalesDashboardSection();
-        showAlert(feedback, 'Sales order added successfully.', 'success');
+        showAlert(feedback, editOrderId ? 'Sales re-order saved successfully.' : 'Sales order added successfully.', 'success');
         closeFormModal();
     } catch (error) {
         showAlert(feedback, handleError(error));
@@ -8008,10 +8069,11 @@ function buildSalesOrderColumns() {
     columns.push({
         title: 'Actions',
         field: 'actions',
-        width: 200,
+        width: 300,
         hozAlign: 'center',
         formatter: tableFormatters.actions([
             { name: 'view', label: 'View', icon: 'bi bi-eye', variant: 'btn-gradient' },
+            { name: 'edit', label: 'Edit', icon: 'bi bi-pencil', variant: 'btn-outline-ghost' },
             { name: 'delete', label: 'Delete', icon: 'bi bi-trash', variant: 'btn-outline-ghost' }
         ]),
         headerSort: false
@@ -8082,6 +8144,7 @@ function renderSalesTable(orders = []) {
     });
     bindTableActions(state.tables.sales, {
         view: (rowData) => populateSalesOrderReview(rowData.id, {}, false),
+        edit: (rowData) => openAdminSalesOrderEdit(rowData.id),
         delete: (rowData) => deleteSalesOrder(rowData.id)
     });
     attachSalesProductsToggle(state.tables.sales, { anchorField: 'actions', storageKey: 'admin_sales_products_toggle' });
@@ -8092,6 +8155,46 @@ function renderSalesDataSection() {
     const orders = getSalesFilteredOrders();
     renderSalesStats(orders);
     renderSalesTable(orders);
+}
+
+async function openAdminSalesOrderEdit(orderId) {
+    const order = state.salesOrders.find((item) => String(item.id) === String(orderId));
+    if (!order) return;
+    const items = state.salesOrderItemsByOrder.get(orderId) || [];
+    const form = openFormModal('#admin-sales-order-form', {
+        title: `Edit Sales Order ${order.order_code || ''}`,
+        mode: 'edit',
+        focusSelector: 'select[name="line_id"]'
+    });
+    if (!form) return;
+
+    form.dataset.editOrderId = String(orderId);
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.textContent = 'Save Re-Order';
+
+    form.querySelector('select[name="line_id"]').value = order.line_id || getOldestSalesLine();
+    populateAdminSalesOrderSpecialists(order.specialist_id || '');
+    populateAdminSalesOrderAccounts(order.account_id || '');
+    form.querySelector('input[name="order_date"]').value = order.order_date || new Date().toISOString().slice(0, 10);
+    form.querySelector('select[name="order_type"]').value = order.order_type || 'company';
+    form.querySelector('textarea[name="notes"]').value = order.notes || '';
+
+    state.adminSalesOrderFormRows = Math.max(1, Math.min(MAX_PRODUCTS_PER_ORDER, items.length || 1));
+    renderAdminSalesOrderProductRows();
+
+    for (let i = 0; i < items.length && i < MAX_PRODUCTS_PER_ORDER; i += 1) {
+        const row = i + 1;
+        const item = items[i];
+        const companySelect = form.querySelector(`[name="order_company_${row}"]`);
+        if (companySelect) companySelect.value = item.company_id || '';
+        populateAdminSalesOrderProductOptions(row, item.company_id || '', item.product_id || '');
+        const productSelect = form.querySelector(`[name="order_product_${row}"]`);
+        if (productSelect && item.product_id) productSelect.value = String(item.product_id);
+        const unitsInput = form.querySelector(`[name="order_units_${row}"]`);
+        const priceInput = form.querySelector(`[name="order_price_${row}"]`);
+        if (unitsInput) unitsInput.value = String(item.units || 1);
+        if (priceInput) priceInput.value = String(item.unit_price || 0);
+    }
 }
 
 function setupSalesTargetAccountFilters() {
@@ -8147,8 +8250,8 @@ function renderSalesTargetAccounts() {
     const stats = document.getElementById('sales-target-accounts-stats');
     if (stats) {
         stats.innerHTML = `
-            <div class="stat-card"><h4>Accounts Number</h4><div class="value">${formatNumber(tableData.length)}</div></div>
-            <div class="stat-card"><h4>Accounts Target</h4><div class="value">${formatNumber(tableData.reduce((s, i) => s + Number(i.target_value || 0), 0), 2)}</div></div>
+            <div class="stat-card"><h4>Accounts Number</h4><div class="value">${formatNumber(ceilStatNumber(tableData.length))}</div></div>
+            <div class="stat-card"><h4>Accounts Target</h4><div class="value">${formatNumber(ceilStatNumber(tableData.reduce((s, i) => s + Number(i.target_value || 0), 0)))}</div></div>
         `;
     }
     const columns = [
@@ -8173,16 +8276,61 @@ function setupSalesTargetProductFilters() {
         <select class="form-select" id="sales-target-product-line">${salesLines.map((line) => `<option value="${line.id}"${line.id === oldestLine ? ' selected' : ''}>${line.name}</option>`).join('')}</select>
         <select class="form-select" id="sales-target-product-specialist"><option value="">All Specialists</option>${specialists.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}</select>
         <select class="form-select" id="sales-target-product-manager"><option value="">All Managers</option>${managers.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}</select>
+        <select class="form-select" id="sales-target-product-product"><option value="">All Products</option></select>
     `;
-    container.querySelectorAll('select').forEach((el) => el.addEventListener('change', () => renderSalesTargetProducts()));
+
+    const refreshProductOptions = () => {
+        const selectedLine = document.getElementById('sales-target-product-line')?.value || getOldestSalesLine();
+        const selectedSpecialist = document.getElementById('sales-target-product-specialist')?.value || '';
+        const selectedManager = document.getElementById('sales-target-product-manager')?.value || '';
+        const productSelect = document.getElementById('sales-target-product-product');
+        if (!productSelect) return;
+
+        let filteredProducts = state.products.filter((p) => p.is_company_product);
+        if (selectedLine) filteredProducts = filteredProducts.filter((p) => String(p.line_id) === String(selectedLine));
+
+        if (selectedManager || selectedSpecialist) {
+            let scopedSpecialists = state.employees.filter((emp) => emp.role === ROLES.EMPLOYEE);
+            if (selectedLine) scopedSpecialists = scopedSpecialists.filter((emp) => String(emp.line_id) === String(selectedLine));
+            if (selectedManager) scopedSpecialists = scopedSpecialists.filter((emp) => String(emp.direct_manager_id) === String(selectedManager) || String(emp.line_manager_id) === String(selectedManager));
+            if (selectedSpecialist) scopedSpecialists = scopedSpecialists.filter((emp) => String(emp.id) === String(selectedSpecialist));
+            const lineIds = new Set(scopedSpecialists.map((emp) => String(emp.line_id)).filter(Boolean));
+            filteredProducts = filteredProducts.filter((p) => lineIds.has(String(p.line_id)));
+        }
+
+        filteredProducts.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        const previous = productSelect.value;
+        productSelect.innerHTML = `<option value="">All Products</option>${filteredProducts.map((p) => `<option value="${p.id}">${escapeOptionText(p.name || '')}</option>`).join('')}`;
+        if (previous && filteredProducts.some((p) => String(p.id) === String(previous))) {
+            productSelect.value = previous;
+        }
+    };
+
+    container.querySelector('#sales-target-product-line')?.addEventListener('change', () => {
+        refreshProductOptions();
+        renderSalesTargetProducts();
+    });
+    container.querySelector('#sales-target-product-specialist')?.addEventListener('change', () => {
+        refreshProductOptions();
+        renderSalesTargetProducts();
+    });
+    container.querySelector('#sales-target-product-manager')?.addEventListener('change', () => {
+        refreshProductOptions();
+        renderSalesTargetProducts();
+    });
+    container.querySelector('#sales-target-product-product')?.addEventListener('change', () => renderSalesTargetProducts());
+
+    refreshProductOptions();
 }
 
 function getFilteredSalesTargetProducts() {
     const line = document.getElementById('sales-target-product-line')?.value || getOldestSalesLine();
     const specialist = document.getElementById('sales-target-product-specialist')?.value || '';
     const manager = document.getElementById('sales-target-product-manager')?.value || '';
+    const productId = document.getElementById('sales-target-product-product')?.value || '';
     let products = state.products.filter((p) => p.is_company_product);
     if (line) products = products.filter((p) => p.line_id === line);
+    if (productId) products = products.filter((p) => String(p.id) === String(productId));
     let specialists = state.employees.filter((emp) => emp.role === ROLES.EMPLOYEE);
     if (line) specialists = specialists.filter((emp) => emp.line_id === line);
     if (manager) specialists = specialists.filter((emp) => String(emp.direct_manager_id) === String(manager) || String(emp.line_manager_id) === String(manager));
@@ -8225,12 +8373,12 @@ function renderSalesTargetProducts() {
 
     const stats = document.getElementById('sales-target-products-stats');
     if (stats) {
-        const orders = getSalesFilteredOrders();
+        const totalTargetUnits = data.reduce((sum, row) => sum + specialists.reduce((rowSum, sp) => rowSum + Number(row[`target_units_${sp.id}`] || 0), 0), 0);
+        const totalTargetValue = data.reduce((sum, row) => sum + specialists.reduce((rowSum, sp) => rowSum + Number(row[`target_value_${sp.id}`] || 0), 0), 0);
         stats.innerHTML = `
-            <div class="stat-card"><h4>DMC Sales Units</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_company_units || 0), 0))}</div></div>
-            <div class="stat-card"><h4>DMC Sales Value</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_company_value || 0), 0), 2)}</div></div>
-            <div class="stat-card"><h4>Competitor Units</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_competitor_units || 0), 0))}</div></div>
-            <div class="stat-card"><h4>Competitor Value</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_competitor_value || 0), 0), 2)}</div></div>
+            <div class="stat-card"><h4>Total Products</h4><div class="value">${formatNumber(ceilStatNumber(data.length))}</div></div>
+            <div class="stat-card"><h4>Target Units</h4><div class="value">${formatNumber(ceilStatNumber(totalTargetUnits))}</div></div>
+            <div class="stat-card"><h4>Target Value</h4><div class="value">${formatNumber(ceilStatNumber(totalTargetValue))}</div></div>
         `;
     }
 

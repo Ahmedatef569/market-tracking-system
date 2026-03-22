@@ -29,7 +29,7 @@ import { createTable, tableFormatters, bindTableActions, ensureTabulator } from 
 import { applyChartDefaults, resetChartDefaults, buildLineChart, buildBarChart, buildDoughnutChart, buildPieChart, destroyChart } from './charts.js';
 import { fetchNotifications, markNotificationsRead, createNotification } from './notifications.js';
 import { fetchReceivedMessages, getUnreadMessageCount, markMessageAsRead } from './messages.js';
-import { initFormModal, refreshFormHosts, closeFormModal } from './formModal.js';
+import { initFormModal, refreshFormHosts, openFormModal, closeFormModal } from './formModal.js';
 import {
     groupCaseProducts,
     computeCaseMetrics,
@@ -1861,7 +1861,7 @@ function renderApprovalsTable() {
 
     const tableData = dataset.map((item) => ({
         ...item,
-        type_label: formatApprovalType(item.type)
+        type_label: item.type_label ? formatApprovalType(item.type_label) : formatApprovalType(item.type)
     }));
 
     const columns = [
@@ -3704,6 +3704,9 @@ function setupEmployeeSalesOrderForm() {
         const myLineName = state.session.employee?.lineName || state.session.employee?.line_name || '';
         form.querySelector('input[name="line_id"]').value = myLineId;
         form.querySelector('input[name="line_name"]').value = myLineName;
+        delete form.dataset.editOrderId;
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.textContent = 'Submit Order';
         state.employeeSalesOrderFormRows = 1;
         populateEmployeeSalesOrderAccounts();
         renderEmployeeSalesOrderProductRows();
@@ -3836,8 +3839,9 @@ function renderEmployeeSalesOrderProductRows() {
         if (priceInput) {
             if (saved.price !== '') {
                 priceInput.value = saved.price;
-            } else if (orderType === 'company' && saved.productId) {
-                priceInput.value = String(getEmployeeProductDefaultPrice(saved.productId));
+            } else if (orderType === 'company') {
+                const selectedProductId = saved.productId || productSelect?.value || '';
+                priceInput.value = selectedProductId ? String(getEmployeeProductDefaultPrice(selectedProductId)) : '';
             } else {
                 priceInput.value = '';
             }
@@ -3877,6 +3881,12 @@ function populateEmployeeSalesOrderProductOptions(rowIndex, companyId, selectedP
     if (orderType === 'company' && !selectedProductId) {
         const first = products[0];
         if (first) productSelect.value = String(first.id);
+    }
+
+    const priceInput = form.querySelector(`[name="e_order_price_${rowIndex}"]`);
+    if (priceInput && orderType === 'company') {
+        const selectedProduct = productSelect.value;
+        priceInput.value = selectedProduct ? String(getEmployeeProductDefaultPrice(selectedProduct)) : '';
     }
 }
 
@@ -3953,36 +3963,78 @@ async function handleEmployeeSalesOrderSubmit(event) {
 
     try {
         setLoadingState(submitButton, true, 'Submitting...');
-        const orderCode = `ORD-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${Date.now().toString(36).toUpperCase()}`;
         const managerId = state.session.employee?.directManagerId || state.session.employee?.lineManagerId || null;
-        const inserted = await handleSupabase(
-            supabase.from('sales_orders').insert({
-                order_code: orderCode,
-                line_id: payload.line_id,
-                account_id: payload.account_id,
-                submitted_by: state.session.employeeId,
-                specialist_id: state.session.employeeId,
-                order_date: payload.order_date,
-                order_type: payload.order_type,
-                notes: payload.notes || null,
-                status: APPROVAL_STATUS.PENDING_MANAGER,
-                manager_id: managerId
-            }).select('id').single(),
-            'insert employee sales order'
-        );
-        await handleSupabase(
-            supabase.from('sales_order_items').insert(items.map((item) => ({ ...item, sales_order_id: inserted.id }))),
-            'insert employee sales order items'
-        );
+        const editOrderId = form.dataset.editOrderId || '';
 
-        await notifyManagerUsers('order', inserted.id, orderCode);
+        if (editOrderId) {
+            const previous = state.salesOrders.find((order) => String(order.id) === String(editOrderId));
+            await handleSupabase(
+                supabase
+                    .from('sales_orders')
+                    .update({
+                        line_id: payload.line_id,
+                        account_id: payload.account_id,
+                        order_date: payload.order_date,
+                        order_type: payload.order_type,
+                        notes: payload.notes || null,
+                        status: APPROVAL_STATUS.PENDING_MANAGER,
+                        manager_id: managerId,
+                        admin_id: null,
+                        manager_comment: null,
+                        admin_comment: null,
+                        approved_at: null,
+                        rejected_at: null,
+                        submitted_at: new Date().toISOString(),
+                        is_reorder: true,
+                        reorder_count: Number(previous?.reorder_count || 0) + 1,
+                        reordered_at: new Date().toISOString(),
+                        reordered_by: state.session.employeeId
+                    })
+                    .eq('id', editOrderId),
+                'update employee sales re-order'
+            );
+            await handleSupabase(
+                supabase.from('sales_order_items').delete().eq('sales_order_id', editOrderId),
+                'delete previous employee sales order items'
+            );
+            await handleSupabase(
+                supabase.from('sales_order_items').insert(items.map((item) => ({ ...item, sales_order_id: editOrderId }))),
+                'insert employee sales re-order items'
+            );
+            await notifyManagerUsers('re-order', editOrderId, previous?.order_code || `Order ${String(editOrderId).slice(0, 6)}`);
+        } else {
+            const orderCode = `ORD-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${Date.now().toString(36).toUpperCase()}`;
+            const inserted = await handleSupabase(
+                supabase.from('sales_orders').insert({
+                    order_code: orderCode,
+                    line_id: payload.line_id,
+                    account_id: payload.account_id,
+                    submitted_by: state.session.employeeId,
+                    specialist_id: state.session.employeeId,
+                    order_date: payload.order_date,
+                    order_type: payload.order_type,
+                    notes: payload.notes || null,
+                    status: APPROVAL_STATUS.PENDING_MANAGER,
+                    manager_id: managerId,
+                    is_reorder: false,
+                    reorder_count: 0
+                }).select('id').single(),
+                'insert employee sales order'
+            );
+            await handleSupabase(
+                supabase.from('sales_order_items').insert(items.map((item) => ({ ...item, sales_order_id: inserted.id }))),
+                'insert employee sales order items'
+            );
+            await notifyManagerUsers('order', inserted.id, orderCode);
+        }
+
         await loadSalesExpansionData();
         buildApprovalDataset();
         renderMySalesDataSection();
         renderApprovalsTable();
         renderMySalesTargetProducts();
         renderEmployeeSalesDashboardSection();
-        showAlert(feedback, 'Sales order submitted for manager approval.', 'success');
+        showAlert(feedback, editOrderId ? 'Sales re-order submitted for manager approval.' : 'Sales order submitted for manager approval.', 'success');
         closeFormModal();
     } catch (error) {
         showAlert(feedback, handleError(error));
@@ -4302,9 +4354,12 @@ function buildMySalesColumns() {
     columns.push({
         title: 'Actions',
         field: 'actions',
-        width: 120,
+        width: 220,
         hozAlign: 'center',
-        formatter: tableFormatters.actions([{ name: 'view', label: 'View', icon: 'bi bi-eye', variant: 'btn-gradient' }]),
+        formatter: tableFormatters.actions([
+            { name: 'view', label: 'View', icon: 'bi bi-eye', variant: 'btn-gradient' },
+            { name: 'edit', label: 'Edit', icon: 'bi bi-pencil', variant: 'btn-outline-ghost' }
+        ]),
         headerSort: false
     });
     return columns;
@@ -4332,8 +4387,49 @@ function renderMySalesDataSection() {
         initialSort: [{ column: 'order_date', dir: 'desc' }]
     });
     bindTableActions(state.tables.mySales, {
-        view: (rowData) => viewMySalesOrder(rowData.id)
+        view: (rowData) => viewMySalesOrder(rowData.id),
+        edit: (rowData) => openEmployeeSalesOrderEdit(rowData.id)
     });
+}
+
+async function openEmployeeSalesOrderEdit(orderId) {
+    const order = state.salesOrders.find((item) => String(item.id) === String(orderId));
+    if (!order) return;
+    const items = state.salesOrderItemsByOrder.get(orderId) || [];
+    const form = openFormModal('#employee-sales-order-form', {
+        title: `Edit Sales Order ${order.order_code || ''}`,
+        mode: 'edit',
+        focusSelector: 'select[name="account_id"]'
+    });
+    if (!form) return;
+
+    form.dataset.editOrderId = String(orderId);
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.textContent = 'Submit Re-Order';
+
+    form.querySelector('input[name="line_id"]').value = order.line_id || state.session.employee?.lineId || state.session.employee?.line_id || '';
+    form.querySelector('input[name="line_name"]').value = order.line_name || state.session.employee?.lineName || state.session.employee?.line_name || '';
+    populateEmployeeSalesOrderAccounts(order.account_id || '');
+    form.querySelector('input[name="order_date"]').value = order.order_date || new Date().toISOString().slice(0, 10);
+    form.querySelector('select[name="order_type"]').value = order.order_type || 'company';
+    form.querySelector('textarea[name="notes"]').value = order.notes || '';
+
+    state.employeeSalesOrderFormRows = Math.max(1, Math.min(MAX_PRODUCTS_PER_ORDER, items.length || 1));
+    renderEmployeeSalesOrderProductRows();
+
+    for (let i = 0; i < items.length && i < MAX_PRODUCTS_PER_ORDER; i += 1) {
+        const row = i + 1;
+        const item = items[i];
+        const companySelect = form.querySelector(`[name="e_order_company_${row}"]`);
+        if (companySelect) companySelect.value = item.company_id || '';
+        populateEmployeeSalesOrderProductOptions(row, item.company_id || '', item.product_id || '');
+        const productSelect = form.querySelector(`[name="e_order_product_${row}"]`);
+        if (productSelect && item.product_id) productSelect.value = String(item.product_id);
+        const unitsInput = form.querySelector(`[name="e_order_units_${row}"]`);
+        const priceInput = form.querySelector(`[name="e_order_price_${row}"]`);
+        if (unitsInput) unitsInput.value = String(item.units || 1);
+        if (priceInput) priceInput.value = String(item.unit_price || 0);
+    }
 }
 
 function setupMySalesTargetAccountFilters() {
@@ -4363,8 +4459,8 @@ function renderMySalesTargetAccounts() {
     const stats = document.getElementById('my-sales-target-accounts-stats');
     if (stats) {
         stats.innerHTML = `
-            <div class="stat-card"><h4>Accounts Number</h4><div class="value">${formatNumber(data.length)}</div></div>
-            <div class="stat-card"><h4>Accounts Target</h4><div class="value">${formatNumber(data.reduce((s, i) => s + Number(i.target_value || 0), 0), 2)}</div></div>
+            <div class="stat-card"><h4>Accounts Number</h4><div class="value">${formatNumber(ceilSalesStatNumber(data.length))}</div></div>
+            <div class="stat-card"><h4>Accounts Target</h4><div class="value">${formatNumber(ceilSalesStatNumber(data.reduce((s, i) => s + Number(i.target_value || 0), 0)))}</div></div>
         `;
     }
     state.tables.mySalesTargetAccounts = createTable('my-sales-target-accounts-table', [
@@ -4378,12 +4474,23 @@ function renderMySalesTargetAccounts() {
 function setupMySalesTargetProductFilters() {
     const container = document.getElementById('my-sales-target-products-filters');
     if (!container) return;
-    container.innerHTML = '<div class="text-secondary">Filtered by your line and assignments.</div>';
+    const myLineId = state.session.employee?.lineId || state.session.employee?.line_id || '';
+    let products = state.products.filter((product) => product.is_company_product && (!myLineId || String(product.line_id) === String(myLineId)));
+    products = products.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    container.innerHTML = `
+        <select class="form-select" id="my-sales-target-product-product">
+            <option value="">All Products</option>
+            ${products.map((product) => `<option value="${product.id}">${escapeOptionText(product.name || '')}</option>`).join('')}
+        </select>
+    `;
+    container.querySelector('#my-sales-target-product-product')?.addEventListener('change', () => renderMySalesTargetProducts());
 }
 
 function renderMySalesTargetProducts() {
     const myLineId = state.session.employee?.lineId || state.session.employee?.line_id || null;
-    const products = state.products.filter((product) => product.is_company_product && (!myLineId || product.line_id === myLineId));
+    const selectedProductId = document.getElementById('my-sales-target-product-product')?.value || '';
+    let products = state.products.filter((product) => product.is_company_product && (!myLineId || product.line_id === myLineId));
+    if (selectedProductId) products = products.filter((product) => String(product.id) === String(selectedProductId));
     const pricesByProduct = new Map(state.salesProductPrices.map((price) => [String(price.product_id), Number(price.unit_price || 0)]));
     const targetsByProduct = new Map();
     state.salesProductTargets.forEach((target) => {
@@ -4403,12 +4510,12 @@ function renderMySalesTargetProducts() {
     });
     const stats = document.getElementById('my-sales-target-products-stats');
     if (stats) {
-        const orders = getFilteredMySalesOrders();
+        const totalTargetUnits = data.reduce((sum, row) => sum + Number(row.target_units || 0), 0);
+        const totalTargetValue = data.reduce((sum, row) => sum + Number(row.target_value || 0), 0);
         stats.innerHTML = `
-            <div class="stat-card"><h4>DMC Sales Units</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_company_units || 0), 0))}</div></div>
-            <div class="stat-card"><h4>DMC Sales Value</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_company_value || 0), 0), 2)}</div></div>
-            <div class="stat-card"><h4>Competitor Units</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_competitor_units || 0), 0))}</div></div>
-            <div class="stat-card"><h4>Competitor Value</h4><div class="value">${formatNumber(orders.reduce((s, i) => s + Number(i.total_competitor_value || 0), 0), 2)}</div></div>
+            <div class="stat-card"><h4>Total Products</h4><div class="value">${formatNumber(ceilSalesStatNumber(data.length))}</div></div>
+            <div class="stat-card"><h4>Target Units</h4><div class="value">${formatNumber(ceilSalesStatNumber(totalTargetUnits))}</div></div>
+            <div class="stat-card"><h4>Target Value</h4><div class="value">${formatNumber(ceilSalesStatNumber(totalTargetValue))}</div></div>
         `;
     }
     state.tables.mySalesTargetProducts = createTable('my-sales-target-products-table', [
@@ -4457,8 +4564,13 @@ function viewMySalesOrder(id) {
     const notes = orderRecord.notes || 'No additional notes provided.';
     const orderType = orderRecord.order_type || 'company';
     const productsBody = products.length
-        ? products.map((product, index) => `<tr><td>${index + 1}</td><td>${product.product_name || 'Unnamed Product'}</td><td>${product.company_name || ''}</td><td>${formatNumber(product.units || 0)}</td><td>${formatNumber(product.unit_price || 0, 2)}</td></tr>`).join('')
-        : `<tr><td colspan="5" class="text-center text-secondary">No products attached.</td></tr>`;
+        ? products.map((product, index) => {
+            const units = Number(product.units || 0);
+            const unitPrice = Number(product.unit_price || 0);
+            const totalValue = units * unitPrice;
+            return `<tr><td>${index + 1}</td><td>${product.product_name || 'Unnamed Product'}</td><td>${product.company_name || ''}</td><td>${formatNumber(units)}</td><td>${formatNumber(unitPrice, 2)}</td><td>${formatNumber(totalValue, 2)}</td></tr>`;
+        }).join('')
+        : `<tr><td colspan="6" class="text-center text-secondary">No products attached.</td></tr>`;
     const content = `
         <div class="case-review">
             <div class="row g-3">
@@ -4469,7 +4581,7 @@ function viewMySalesOrder(id) {
                 <div class="col-md-6"><div class="review-field"><span>Order Type</span><strong>${orderType}</strong></div></div>
                 <div class="col-md-6"><div class="review-field"><span>Account</span><strong>${account}</strong></div></div>
             </div>
-            <div class="mt-4"><h6 class="text-secondary text-uppercase mb-2">Products</h6><div class="table-responsive rounded"><table class="table table-dark table-sm align-middle mb-0"><thead><tr class="text-secondary"><th>#</th><th>Product</th><th>Company</th><th>Units</th><th>Unit Price</th></tr></thead><tbody>${productsBody}</tbody></table></div></div>
+            <div class="mt-4"><h6 class="text-secondary text-uppercase mb-2">Products</h6><div class="table-responsive rounded"><table class="table table-dark table-sm align-middle mb-0"><thead><tr class="text-secondary"><th>#</th><th>Product</th><th>Company</th><th>Units</th><th>Unit Price</th><th>Value</th></tr></thead><tbody>${productsBody}</tbody></table></div></div>
             <div class="mt-4"><h6 class="text-secondary text-uppercase mb-2">Notes</h6><p class="mb-0">${notes}</p></div>
         </div>
     `;
@@ -4633,6 +4745,7 @@ function buildApprovalDataset() {
             .map((orderItem) => ({
                 id: orderItem.id,
                 type: 'order',
+                type_label: orderItem.is_reorder ? 're-order' : 'order',
                 name: orderItem.order_code,
                 status: orderItem.status,
                 created_at: orderItem.created_at
