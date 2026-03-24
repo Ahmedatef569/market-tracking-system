@@ -1,6 +1,6 @@
 import { supabase, handleSupabase } from './supabaseClient.js';
 import { requireAuth, logout, updatePassword, hydrateSession } from './session.js';
-import { ROLES, APPROVAL_STATUS, ACCOUNT_TYPES, MAX_PRODUCTS_PER_ORDER } from './constants.js';
+import { ROLES, APPROVAL_STATUS, ACCOUNT_TYPES, MAX_PRODUCTS_PER_CASE, MAX_PRODUCTS_PER_ORDER } from './constants.js';
 import { showWelcomePopup } from './welcomePopup.js';
 import { initAutoVersionCheck } from './versionCheck.js';
 import {
@@ -3877,10 +3877,8 @@ function populateEmployeeSalesOrderProductOptions(rowIndex, companyId, selectedP
     `;
     if (selectedProductId && products.some((product) => String(product.id) === String(selectedProductId))) {
         productSelect.value = String(selectedProductId);
-    }
-    if (orderType === 'company' && !selectedProductId) {
-        const first = products[0];
-        if (first) productSelect.value = String(first.id);
+    } else {
+        productSelect.value = '';
     }
 
     const priceInput = form.querySelector(`[name="e_order_price_${rowIndex}"]`);

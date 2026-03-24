@@ -4055,10 +4055,8 @@ function populateManagerSalesOrderProductOptions(rowIndex, companyId, selectedPr
     `;
     if (selectedProductId && products.some((product) => String(product.id) === String(selectedProductId))) {
         productSelect.value = String(selectedProductId);
-    }
-    if (orderType === 'company' && !selectedProductId) {
-        const first = products[0];
-        if (first) productSelect.value = String(first.id);
+    } else {
+        productSelect.value = '';
     }
 
     const priceInput = form.querySelector(`[name="m_order_price_${rowIndex}"]`);
