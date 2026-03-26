@@ -83,6 +83,7 @@ const state = {
     salesOrders: [],
     salesOrderItems: [],
     salesOrderItemsByOrder: new Map(),
+    salesAccountProductTargets: [],
     salesAccountTargets: [],
     salesProductTargets: [],
     salesProductPrices: [],
@@ -3557,7 +3558,7 @@ function groupSalesOrderItems(orderItems = []) {
 
 async function loadSalesExpansionData() {
     try {
-        const [orders, accountTargets, productTargets, prices] = await Promise.all([
+        const [orders, accountProductTargets] = await Promise.all([
             loadAllPages(
                 (offset, pageSize, page) => handleSupabase(
                     supabase
@@ -3574,35 +3575,12 @@ async function loadSalesExpansionData() {
             loadAllPages(
                 (offset, pageSize, page) => handleSupabase(
                     supabase
-                        .from('sales_account_targets')
+                        .from('sales_account_product_targets')
                         .select('*')
                         .eq('specialist_id', state.session.employeeId)
                         .order('id', { ascending: true })
                         .range(offset, offset + pageSize - 1),
-                    `load my sales account targets page ${page}`
-                ),
-                { pageSize: 1000 }
-            ),
-            loadAllPages(
-                (offset, pageSize, page) => handleSupabase(
-                    supabase
-                        .from('sales_product_targets')
-                        .select('*')
-                        .eq('specialist_id', state.session.employeeId)
-                        .order('id', { ascending: true })
-                        .range(offset, offset + pageSize - 1),
-                    `load my sales product targets page ${page}`
-                ),
-                { pageSize: 1000 }
-            ),
-            loadAllPages(
-                (offset, pageSize, page) => handleSupabase(
-                    supabase
-                        .from('sales_product_prices')
-                        .select('*')
-                        .order('product_id', { ascending: true })
-                        .range(offset, offset + pageSize - 1),
-                    `load sales product prices page ${page}`
+                    `load my sales account-product targets page ${page}`
                 ),
                 { pageSize: 1000 }
             )
@@ -3627,14 +3605,54 @@ async function loadSalesExpansionData() {
         );
 
         state.salesOrderItemsByOrder = groupSalesOrderItems(state.salesOrderItems);
-        state.salesAccountTargets = accountTargets || [];
-        state.salesProductTargets = productTargets || [];
-        state.salesProductPrices = prices || [];
+        state.salesAccountProductTargets = accountProductTargets || [];
+
+        const accountAgg = new Map();
+        const productAgg = new Map();
+        const productPriceAgg = new Map();
+        state.salesAccountProductTargets.forEach((target) => {
+            const accountKey = `${target.account_id || ''}::${target.specialist_id || ''}::${target.line_id || ''}`;
+            const accountPrev = accountAgg.get(accountKey) || {
+                account_id: target.account_id,
+                specialist_id: target.specialist_id,
+                line_id: target.line_id,
+                target_value: 0
+            };
+            accountPrev.target_value += Number(target.target_value || 0);
+            accountAgg.set(accountKey, accountPrev);
+
+            const productKey = `${target.product_id || ''}::${target.specialist_id || ''}::${target.line_id || ''}`;
+            const productPrev = productAgg.get(productKey) || {
+                product_id: target.product_id,
+                specialist_id: target.specialist_id,
+                line_id: target.line_id,
+                target_units: 0,
+                target_value: 0,
+                effective_from: target.created_at ? String(target.created_at).slice(0, 10) : new Date().toISOString().slice(0, 10)
+            };
+            productPrev.target_units += Number(target.target_units || 0);
+            productPrev.target_value += Number(target.target_value || 0);
+            productAgg.set(productKey, productPrev);
+
+            const priceKey = String(target.product_id || '');
+            const pricePrev = productPriceAgg.get(priceKey) || { total: 0, count: 0 };
+            pricePrev.total += Number(target.unit_price || 0);
+            pricePrev.count += 1;
+            productPriceAgg.set(priceKey, pricePrev);
+        });
+
+        state.salesAccountTargets = Array.from(accountAgg.values());
+        state.salesProductTargets = Array.from(productAgg.values());
+        state.salesProductPrices = Array.from(productPriceAgg.entries()).map(([product_id, agg]) => ({
+            product_id,
+            unit_price: agg.count > 0 ? agg.total / agg.count : 0
+        }));
     } catch (error) {
         console.warn('Sales schema unavailable in employee:', error?.message || error);
         state.salesOrders = [];
         state.salesOrderItems = [];
         state.salesOrderItemsByOrder = new Map();
+        state.salesAccountProductTargets = [];
         state.salesAccountTargets = [];
         state.salesProductTargets = [];
         state.salesProductPrices = [];
@@ -3732,6 +3750,7 @@ function setupEmployeeSalesOrderForm() {
     orderTypeSelect?.addEventListener('change', () => {
         renderEmployeeSalesOrderProductRows();
     });
+    accountSelect?.addEventListener('change', () => renderEmployeeSalesOrderProductRows());
 
     resetForm();
 }
@@ -3766,7 +3785,13 @@ function getEmployeeSalesOrderProducts() {
     });
 }
 
-function getEmployeeProductDefaultPrice(productId) {
+function getEmployeeProductDefaultPrice(productId, accountId = '') {
+    const accountScoped = state.salesAccountProductTargets.find((target) =>
+        String(target.product_id) === String(productId)
+        && (!accountId || String(target.account_id) === String(accountId))
+        && String(target.specialist_id) === String(state.session.employeeId)
+    );
+    if (accountScoped) return Number(accountScoped.unit_price || 0);
     return Number(state.salesProductPrices.find((price) => String(price.product_id) === String(productId))?.unit_price || 0);
 }
 
@@ -3841,7 +3866,8 @@ function renderEmployeeSalesOrderProductRows() {
                 priceInput.value = saved.price;
             } else if (orderType === 'company') {
                 const selectedProductId = saved.productId || productSelect?.value || '';
-                priceInput.value = selectedProductId ? String(getEmployeeProductDefaultPrice(selectedProductId)) : '';
+                const accountId = form.querySelector('select[name="account_id"]')?.value || '';
+                priceInput.value = selectedProductId ? String(getEmployeeProductDefaultPrice(selectedProductId, accountId)) : '';
             } else {
                 priceInput.value = '';
             }
@@ -3854,7 +3880,8 @@ function renderEmployeeSalesOrderProductRows() {
         productSelect?.addEventListener('change', () => {
             if (!priceInput) return;
             if (orderType === 'company' && productSelect.value) {
-                priceInput.value = String(getEmployeeProductDefaultPrice(productSelect.value));
+                const accountId = form.querySelector('select[name="account_id"]')?.value || '';
+                priceInput.value = String(getEmployeeProductDefaultPrice(productSelect.value, accountId));
             } else if (orderType === 'competitor') {
                 priceInput.value = '';
             }
@@ -3884,7 +3911,8 @@ function populateEmployeeSalesOrderProductOptions(rowIndex, companyId, selectedP
     const priceInput = form.querySelector(`[name="e_order_price_${rowIndex}"]`);
     if (priceInput && orderType === 'company') {
         const selectedProduct = productSelect.value;
-        priceInput.value = selectedProduct ? String(getEmployeeProductDefaultPrice(selectedProduct)) : '';
+        const accountId = form.querySelector('select[name="account_id"]')?.value || '';
+        priceInput.value = selectedProduct ? String(getEmployeeProductDefaultPrice(selectedProduct, accountId)) : '';
     }
 }
 
@@ -4272,6 +4300,17 @@ function computeMySalesSummaryMetrics(orders = [], scope = null) {
             return (actual / Number(target.target_value || 1)) * 100;
         });
 
+    const accountTypeById = new Map(state.accounts.map((acc) => [String(acc.id), acc.account_type || '']));
+    const computeTypeAchievement = (type) => {
+        const targets = relevantAccountTargets.filter((target) => accountTypeById.get(String(target.account_id || '')) === type);
+        const targetTotal = targets.reduce((sum, target) => sum + Number(target.target_value || 0), 0);
+        const actualTotal = targets.reduce((sum, target) => {
+            const key = `${target.account_id || ''}::${target.specialist_id || ''}`;
+            return sum + Number(accountSalesValueMap.get(key) || 0);
+        }, 0);
+        return targetTotal > 0 ? (actualTotal / targetTotal) * 100 : 0;
+    };
+
     const latestProductTargets = new Map();
     relevantProductTargets.forEach((target) => {
         const key = `${target.product_id || ''}::${target.specialist_id || ''}`;
@@ -4297,6 +4336,8 @@ function computeMySalesSummaryMetrics(orders = [], scope = null) {
         dmcValue,
         targetValue,
         valueAchievement,
+        upaAchievement: computeTypeAchievement('UPA'),
+        privateAchievement: computeTypeAchievement('Private'),
         unitsAchievementAvg,
         accountsAchievementAvg,
         competitorUnits,
@@ -4370,12 +4411,12 @@ function renderMySalesDataSection() {
     if (stats) {
         const metrics = computeMySalesSummaryMetrics(orders, scope);
         stats.innerHTML = `
-            <div class="stat-card"><h4>DMC Unit</h4><div class="value">${formatSalesStatValue(metrics.dmcUnits)}</div></div>
-            <div class="stat-card"><h4>DMC Value</h4><div class="value">${formatSalesStatValue(metrics.dmcValue)}</div></div>
+            <div class="stat-card"><h4>Sales Units</h4><div class="value">${formatSalesStatValue(metrics.dmcUnits)}</div></div>
+            <div class="stat-card"><h4>Sales Value</h4><div class="value">${formatSalesStatValue(metrics.dmcValue)}</div></div>
             <div class="stat-card"><h4>Target Value</h4><div class="value">${formatSalesStatValue(metrics.targetValue)}</div></div>
             <div class="stat-card"><h4>Achievement</h4><div class="value">${formatSalesStatPercent(metrics.valueAchievement)}</div></div>
-            <div class="stat-card"><h4>Units Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.unitsAchievementAvg)}</div></div>
-            <div class="stat-card"><h4>Accounts Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.accountsAchievementAvg)}</div></div>
+            <div class="stat-card"><h4>UPA Ach.</h4><div class="value">${formatSalesStatPercent(metrics.upaAchievement)}</div></div>
+            <div class="stat-card"><h4>Private Ach.</h4><div class="value">${formatSalesStatPercent(metrics.privateAchievement)}</div></div>
             <div class="stat-card"><h4>Competitor Units</h4><div class="value">${formatSalesStatValue(metrics.competitorUnits)}</div></div>
             <div class="stat-card"><h4>Competitor Value</h4><div class="value">${formatSalesStatValue(metrics.competitorValue)}</div></div>
         `;
@@ -4433,40 +4474,84 @@ async function openEmployeeSalesOrderEdit(orderId) {
 function setupMySalesTargetAccountFilters() {
     const container = document.getElementById('my-sales-target-accounts-filters');
     if (!container) return;
+    const myLineId = state.session.employee?.lineId || state.session.employee?.line_id || '';
+    let products = state.products.filter((product) => product.is_company_product && (!myLineId || String(product.line_id) === String(myLineId)));
+    products = products.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     container.innerHTML = `
-        <select class="form-select" id="my-sales-target-account-type">
-            <option value="">All Account Types</option>
-            ${ACCOUNT_TYPES.map((type) => `<option value="${type}">${type}</option>`).join('')}
+        <select class="form-select" id="my-sales-target-account-product">
+            <option value="">All Products</option>
+            ${products.map((product) => `<option value="${product.id}">${escapeOptionText(product.name || '')}</option>`).join('')}
         </select>
     `;
-    container.querySelector('#my-sales-target-account-type')?.addEventListener('change', () => renderMySalesTargetAccounts());
+    container.querySelector('#my-sales-target-account-product')?.addEventListener('change', () => renderMySalesTargetAccounts());
 }
 
 function renderMySalesTargetAccounts() {
-    const accountType = document.getElementById('my-sales-target-account-type')?.value || '';
+    const productFilter = document.getElementById('my-sales-target-account-product')?.value || '';
     let accounts = state.accounts.filter((acc) => acc.status === APPROVAL_STATUS.APPROVED && String(acc.owner_employee_id) === String(state.session.employeeId));
-    if (accountType) accounts = accounts.filter((acc) => acc.account_type === accountType);
-    const targetMap = new Map(state.salesAccountTargets.map((target) => [String(target.account_id), target]));
-    const data = accounts.map((acc) => ({
-        id: acc.id,
-        account: acc.name,
-        specialist: acc.owner_name || state.session.employee?.fullName || '',
-        line: acc.line_name || '',
-        target_value: Number(targetMap.get(String(acc.id))?.target_value || 0)
-    }));
+    if (productFilter) {
+        accounts = accounts.filter((acc) => state.salesAccountProductTargets.some((target) =>
+            String(target.account_id) === String(acc.id)
+            && String(target.specialist_id) === String(state.session.employeeId)
+            && String(target.product_id) === String(productFilter)
+        ));
+    }
+    const lineId = state.session.employee?.lineId || state.session.employee?.line_id || '';
+    const lineProducts = state.products
+        .filter((product) => product.is_company_product && (!lineId || String(product.line_id) === String(lineId)))
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const accountProductMap = new Map(state.salesAccountProductTargets.map((target) => [`${target.account_id}::${target.product_id}`, target]));
+    const data = accounts.map((acc) => {
+        const row = {
+            id: acc.id,
+            account: acc.name,
+            specialist: acc.owner_name || state.session.employee?.fullName || '',
+            line: acc.line_name || '',
+            account_type: acc.account_type || '',
+            target_units: 0,
+            target_value: 0
+        };
+        lineProducts.forEach((product) => {
+            const target = accountProductMap.get(`${acc.id}::${product.id}`);
+            const price = Number(target?.unit_price || 0);
+            const units = Number(target?.target_units || 0);
+            const value = Number(target?.target_value || 0);
+            row[`p_${product.id}_price`] = price;
+            row[`p_${product.id}_units`] = units;
+            row[`p_${product.id}_value`] = value;
+            row.target_units += units;
+            row.target_value += value;
+        });
+        return row;
+    });
     const stats = document.getElementById('my-sales-target-accounts-stats');
     if (stats) {
         stats.innerHTML = `
-            <div class="stat-card"><h4>Accounts Number</h4><div class="value">${formatNumber(ceilSalesStatNumber(data.length))}</div></div>
-            <div class="stat-card"><h4>Accounts Target</h4><div class="value">${formatNumber(ceilSalesStatNumber(data.reduce((s, i) => s + Number(i.target_value || 0), 0)))}</div></div>
+            <div class="stat-card"><h4>Total Accounts</h4><div class="value">${formatNumber(ceilSalesStatNumber(data.length))}</div></div>
+            <div class="stat-card"><h4>Target Units</h4><div class="value">${formatNumber(ceilSalesStatNumber(data.reduce((s, i) => s + Number(i.target_units || 0), 0)))}</div></div>
+            <div class="stat-card"><h4>Target Value</h4><div class="value">${formatNumber(ceilSalesStatNumber(data.reduce((s, i) => s + Number(i.target_value || 0), 0)))}</div></div>
         `;
     }
     state.tables.mySalesTargetAccounts = createTable('my-sales-target-accounts-table', [
-        { title: 'Account', field: 'account', minWidth: 220, headerFilter: 'input' },
+        { title: 'Account', field: 'account', minWidth: 220, headerFilter: 'input', frozen: true },
         { title: 'Product Specialist', field: 'specialist', minWidth: 220, headerFilter: 'input' },
         { title: 'Line', field: 'line', width: 160, headerFilter: 'input' },
+        { title: 'Account Type', field: 'account_type', width: 140, headerFilter: 'input' },
+        ...lineProducts.map((product, index) => {
+            const bandClass = index % 2 === 0 ? 'target-band-alt' : '';
+            return ({
+                title: escapeOptionText(product.name || ''),
+                headerHozAlign: 'center',
+                cssClass: bandClass,
+                columns: [
+                    { title: 'Price', field: `p_${product.id}_price`, formatter: tableFormatters.number(2), width: 130, hozAlign: 'center', headerHozAlign: 'center', cssClass: bandClass },
+                    { title: 'Units', field: `p_${product.id}_units`, formatter: tableFormatters.number(), width: 120, hozAlign: 'center', headerHozAlign: 'center', cssClass: bandClass },
+                    { title: 'Value', field: `p_${product.id}_value`, formatter: tableFormatters.number(2), width: 140, hozAlign: 'center', headerHozAlign: 'center', cssClass: bandClass }
+                ]
+            });
+        }),
         { title: 'Target Value', field: 'target_value', formatter: tableFormatters.number(2), width: 170 }
-    ], data, { height: 500 });
+    ], data, { height: 500, renderHorizontal: 'basic', layout: 'fitDataFill' });
 }
 
 function setupMySalesTargetProductFilters() {
@@ -4489,12 +4574,14 @@ function renderMySalesTargetProducts() {
     const selectedProductId = document.getElementById('my-sales-target-product-product')?.value || '';
     let products = state.products.filter((product) => product.is_company_product && (!myLineId || product.line_id === myLineId));
     if (selectedProductId) products = products.filter((product) => String(product.id) === String(selectedProductId));
-    const pricesByProduct = new Map(state.salesProductPrices.map((price) => [String(price.product_id), Number(price.unit_price || 0)]));
     const targetsByProduct = new Map();
-    state.salesProductTargets.forEach((target) => {
+    state.salesAccountProductTargets.forEach((target) => {
         if (String(target.specialist_id) !== String(state.session.employeeId)) return;
-        const prev = targetsByProduct.get(String(target.product_id));
-        if (!prev || new Date(prev.effective_from || 0) < new Date(target.effective_from || 0)) targetsByProduct.set(String(target.product_id), target);
+        const key = String(target.product_id || '');
+        const prev = targetsByProduct.get(key) || { target_units: 0, target_value: 0 };
+        prev.target_units += Number(target.target_units || 0);
+        prev.target_value += Number(target.target_value || 0);
+        targetsByProduct.set(key, prev);
     });
     const data = products.map((product) => {
         const target = targetsByProduct.get(String(product.id));
@@ -4502,8 +4589,7 @@ function renderMySalesTargetProducts() {
             id: product.id,
             product_name: product.name,
             target_units: Number(target?.target_units || 0),
-            target_value: Number(target?.target_value || 0),
-            unit_price: pricesByProduct.get(String(product.id)) || 0
+            total_target: Number(target?.target_value || 0)
         };
     });
     const stats = document.getElementById('my-sales-target-products-stats');
@@ -4518,10 +4604,9 @@ function renderMySalesTargetProducts() {
     }
     state.tables.mySalesTargetProducts = createTable('my-sales-target-products-table', [
         { title: 'Product', field: 'product_name', minWidth: 220, headerFilter: 'input', frozen: true },
-        { title: 'Target Units', field: 'target_units', formatter: tableFormatters.number(), width: 140 },
-        { title: 'Target Value', field: 'target_value', formatter: tableFormatters.number(2), width: 160 },
-        { title: 'Unit Price', field: 'unit_price', formatter: tableFormatters.number(2), width: 140 }
-    ], data, { height: 520 });
+        { title: 'Total Units', field: 'target_units', formatter: tableFormatters.number(), width: 140, hozAlign: 'center', headerHozAlign: 'center' },
+        { title: 'Total Target', field: 'total_target', formatter: tableFormatters.number(2), width: 160, hozAlign: 'center', headerHozAlign: 'center' }
+    ], data, { height: 520, renderHorizontal: 'basic', layout: 'fitDataFill' });
 }
 
 function renderMySalesTargetSection() {
@@ -4541,12 +4626,12 @@ function renderEmployeeSalesDashboardSection() {
     const orders = getFilteredMySalesOrders();
     const metrics = computeMySalesSummaryMetrics(orders, getMySalesMetricScopeFromFilters());
     stats.innerHTML = `
-        <div class="stat-card"><h4>DMC Unit</h4><div class="value">${formatSalesStatValue(metrics.dmcUnits)}</div></div>
-        <div class="stat-card"><h4>DMC Value</h4><div class="value">${formatSalesStatValue(metrics.dmcValue)}</div></div>
+        <div class="stat-card"><h4>Sales Units</h4><div class="value">${formatSalesStatValue(metrics.dmcUnits)}</div></div>
+        <div class="stat-card"><h4>Sales Value</h4><div class="value">${formatSalesStatValue(metrics.dmcValue)}</div></div>
         <div class="stat-card"><h4>Target Value</h4><div class="value">${formatSalesStatValue(metrics.targetValue)}</div></div>
         <div class="stat-card"><h4>Achievement</h4><div class="value">${formatSalesStatPercent(metrics.valueAchievement)}</div></div>
-        <div class="stat-card"><h4>Units Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.unitsAchievementAvg)}</div></div>
-        <div class="stat-card"><h4>Accounts Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.accountsAchievementAvg)}</div></div>
+        <div class="stat-card"><h4>UPA Ach.</h4><div class="value">${formatSalesStatPercent(metrics.upaAchievement)}</div></div>
+        <div class="stat-card"><h4>Private Ach.</h4><div class="value">${formatSalesStatPercent(metrics.privateAchievement)}</div></div>
         <div class="stat-card"><h4>Competitor Units</h4><div class="value">${formatSalesStatValue(metrics.competitorUnits)}</div></div>
         <div class="stat-card"><h4>Competitor Value</h4><div class="value">${formatSalesStatValue(metrics.competitorValue)}</div></div>
     `;

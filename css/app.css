@@ -1135,6 +1135,94 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     font-weight: 500;
 }
 
+.table-wrapper .tabulator .tabulator-row .tabulator-cell.target-band-alt,
+.table-wrapper .tabulator .tabulator-header .tabulator-col.target-band-alt {
+    background: rgba(59, 130, 246, 0.08) !important;
+}
+
+body[data-theme='light'] .table-wrapper .tabulator .tabulator-row .tabulator-cell.target-band-alt,
+body[data-theme='light'] .table-wrapper .tabulator .tabulator-header .tabulator-col.target-band-alt {
+    background: rgba(37, 99, 235, 0.06) !important;
+}
+
+#sales-target-accounts-table .tabulator .tabulator-frozen,
+#sales-target-accounts-table .tabulator .tabulator-frozen-left,
+#sales-target-products-table .tabulator .tabulator-frozen,
+#sales-target-products-table .tabulator .tabulator-frozen-left,
+#team-sales-target-accounts-table .tabulator .tabulator-frozen,
+#team-sales-target-accounts-table .tabulator .tabulator-frozen-left,
+#team-sales-target-products-table .tabulator .tabulator-frozen,
+#team-sales-target-products-table .tabulator .tabulator-frozen-left,
+#my-sales-target-accounts-table .tabulator .tabulator-frozen,
+#my-sales-target-accounts-table .tabulator .tabulator-frozen-left,
+#my-sales-target-products-table .tabulator .tabulator-frozen,
+#my-sales-target-products-table .tabulator .tabulator-frozen-left {
+    background-color: #0f172a !important;
+    z-index: 40 !important;
+    overflow: hidden !important;
+    opacity: 1 !important;
+    box-shadow: 2px 0 0 rgba(148, 163, 184, 0.25);
+}
+
+#sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-col-content,
+#sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-cell,
+#sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-cell-value,
+#sales-target-products-table .tabulator .tabulator-frozen .tabulator-col-content,
+#sales-target-products-table .tabulator .tabulator-frozen .tabulator-cell,
+#sales-target-products-table .tabulator .tabulator-frozen .tabulator-cell-value,
+#team-sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-col-content,
+#team-sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-cell,
+#team-sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-cell-value,
+#team-sales-target-products-table .tabulator .tabulator-frozen .tabulator-col-content,
+#team-sales-target-products-table .tabulator .tabulator-frozen .tabulator-cell,
+#team-sales-target-products-table .tabulator .tabulator-frozen .tabulator-cell-value,
+#my-sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-col-content,
+#my-sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-cell,
+#my-sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-cell-value,
+#my-sales-target-products-table .tabulator .tabulator-frozen .tabulator-col-content,
+#my-sales-target-products-table .tabulator .tabulator-frozen .tabulator-cell,
+#my-sales-target-products-table .tabulator .tabulator-frozen .tabulator-cell-value {
+    background-color: #0f172a !important;
+    opacity: 1 !important;
+}
+
+body[data-theme='light'] #sales-target-accounts-table .tabulator .tabulator-frozen,
+body[data-theme='light'] #sales-target-accounts-table .tabulator .tabulator-frozen-left,
+body[data-theme='light'] #sales-target-products-table .tabulator .tabulator-frozen,
+body[data-theme='light'] #sales-target-products-table .tabulator .tabulator-frozen-left,
+body[data-theme='light'] #team-sales-target-accounts-table .tabulator .tabulator-frozen,
+body[data-theme='light'] #team-sales-target-accounts-table .tabulator .tabulator-frozen-left,
+body[data-theme='light'] #team-sales-target-products-table .tabulator .tabulator-frozen,
+body[data-theme='light'] #team-sales-target-products-table .tabulator .tabulator-frozen-left,
+body[data-theme='light'] #my-sales-target-accounts-table .tabulator .tabulator-frozen,
+body[data-theme='light'] #my-sales-target-accounts-table .tabulator .tabulator-frozen-left,
+body[data-theme='light'] #my-sales-target-products-table .tabulator .tabulator-frozen,
+body[data-theme='light'] #my-sales-target-products-table .tabulator .tabulator-frozen-left {
+    background-color: #ffffff !important;
+    box-shadow: 2px 0 0 rgba(148, 163, 184, 0.22);
+}
+
+body[data-theme='light'] #sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-col-content,
+body[data-theme='light'] #sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-cell,
+body[data-theme='light'] #sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-cell-value,
+body[data-theme='light'] #sales-target-products-table .tabulator .tabulator-frozen .tabulator-col-content,
+body[data-theme='light'] #sales-target-products-table .tabulator .tabulator-frozen .tabulator-cell,
+body[data-theme='light'] #sales-target-products-table .tabulator .tabulator-frozen .tabulator-cell-value,
+body[data-theme='light'] #team-sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-col-content,
+body[data-theme='light'] #team-sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-cell,
+body[data-theme='light'] #team-sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-cell-value,
+body[data-theme='light'] #team-sales-target-products-table .tabulator .tabulator-frozen .tabulator-col-content,
+body[data-theme='light'] #team-sales-target-products-table .tabulator .tabulator-frozen .tabulator-cell,
+body[data-theme='light'] #team-sales-target-products-table .tabulator .tabulator-frozen .tabulator-cell-value,
+body[data-theme='light'] #my-sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-col-content,
+body[data-theme='light'] #my-sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-cell,
+body[data-theme='light'] #my-sales-target-accounts-table .tabulator .tabulator-frozen .tabulator-cell-value,
+body[data-theme='light'] #my-sales-target-products-table .tabulator .tabulator-frozen .tabulator-col-content,
+body[data-theme='light'] #my-sales-target-products-table .tabulator .tabulator-frozen .tabulator-cell,
+body[data-theme='light'] #my-sales-target-products-table .tabulator .tabulator-frozen .tabulator-cell-value {
+    background-color: #ffffff !important;
+}
+
 .table-wrapper .tabulator .tabulator-row.tabulator-selectable:hover {
     background: rgba(99, 102, 241, 0.2);
 }

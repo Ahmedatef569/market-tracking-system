@@ -87,6 +87,7 @@ const state = {
     salesOrders: [],
     salesOrderItems: [],
     salesOrderItemsByOrder: new Map(),
+    salesAccountProductTargets: [],
     salesAccountTargets: [],
     salesProductTargets: [],
     salesProductPrices: [],
@@ -7222,46 +7223,66 @@ async function loadSalesOrders() {
 
 async function loadSalesTargets() {
     try {
-        const [accountTargets, productTargets, prices] = await Promise.all([
+        const [accountProductTargets] = await Promise.all([
             loadAllPages(
                 (offset, pageSize, page) => handleSupabase(
                     supabase
-                        .from('sales_account_targets')
+                        .from('sales_account_product_targets')
                         .select('*')
                         .order('id', { ascending: true })
                         .range(offset, offset + pageSize - 1),
-                    `load sales account targets page ${page}`
-                ),
-                { pageSize: 1000 }
-            ),
-            loadAllPages(
-                (offset, pageSize, page) => handleSupabase(
-                    supabase
-                        .from('sales_product_targets')
-                        .select('*')
-                        .order('id', { ascending: true })
-                        .range(offset, offset + pageSize - 1),
-                    `load sales product targets page ${page}`
-                ),
-                { pageSize: 1000 }
-            ),
-            loadAllPages(
-                (offset, pageSize, page) => handleSupabase(
-                    supabase
-                        .from('sales_product_prices')
-                        .select('*')
-                        .order('product_id', { ascending: true })
-                        .range(offset, offset + pageSize - 1),
-                    `load sales product prices page ${page}`
+                    `load sales account-product targets page ${page}`
                 ),
                 { pageSize: 1000 }
             )
         ]);
-        state.salesAccountTargets = accountTargets || [];
-        state.salesProductTargets = productTargets || [];
-        state.salesProductPrices = prices || [];
+
+        state.salesAccountProductTargets = accountProductTargets || [];
+
+        const accountAgg = new Map();
+        const productAgg = new Map();
+        const productPriceAgg = new Map();
+
+        state.salesAccountProductTargets.forEach((target) => {
+            const accountKey = `${target.account_id || ''}::${target.specialist_id || ''}::${target.line_id || ''}`;
+            const accountPrev = accountAgg.get(accountKey) || {
+                account_id: target.account_id,
+                specialist_id: target.specialist_id,
+                line_id: target.line_id,
+                target_value: 0
+            };
+            accountPrev.target_value += Number(target.target_value || 0);
+            accountAgg.set(accountKey, accountPrev);
+
+            const productKey = `${target.product_id || ''}::${target.specialist_id || ''}::${target.line_id || ''}`;
+            const productPrev = productAgg.get(productKey) || {
+                product_id: target.product_id,
+                specialist_id: target.specialist_id,
+                line_id: target.line_id,
+                target_units: 0,
+                target_value: 0,
+                effective_from: target.created_at ? String(target.created_at).slice(0, 10) : new Date().toISOString().slice(0, 10)
+            };
+            productPrev.target_units += Number(target.target_units || 0);
+            productPrev.target_value += Number(target.target_value || 0);
+            productAgg.set(productKey, productPrev);
+
+            const priceKey = String(target.product_id || '');
+            const pricePrev = productPriceAgg.get(priceKey) || { total: 0, count: 0 };
+            pricePrev.total += Number(target.unit_price || 0);
+            pricePrev.count += 1;
+            productPriceAgg.set(priceKey, pricePrev);
+        });
+
+        state.salesAccountTargets = Array.from(accountAgg.values());
+        state.salesProductTargets = Array.from(productAgg.values());
+        state.salesProductPrices = Array.from(productPriceAgg.entries()).map(([product_id, agg]) => ({
+            product_id,
+            unit_price: agg.count > 0 ? agg.total / agg.count : 0
+        }));
     } catch (error) {
         console.warn('Sales targets unavailable:', error?.message || error);
+        state.salesAccountProductTargets = [];
         state.salesAccountTargets = [];
         state.salesProductTargets = [];
         state.salesProductPrices = [];
@@ -7373,6 +7394,10 @@ function setupAdminSalesOrderForm() {
     });
     specialistSelect?.addEventListener('change', () => {
         populateAdminSalesOrderAccounts();
+        renderAdminSalesOrderProductRows();
+    });
+    accountSelect?.addEventListener('change', () => {
+        renderAdminSalesOrderProductRows();
     });
     orderTypeSelect?.addEventListener('change', () => {
         renderAdminSalesOrderProductRows();
@@ -7432,7 +7457,13 @@ function getAdminSalesFormProducts() {
     });
 }
 
-function getAdminProductDefaultPrice(productId) {
+function getAdminProductDefaultPrice(productId, accountId = '', specialistId = '') {
+    const accountScoped = state.salesAccountProductTargets.find((target) =>
+        String(target.product_id) === String(productId)
+        && (!accountId || String(target.account_id) === String(accountId))
+        && (!specialistId || String(target.specialist_id) === String(specialistId))
+    );
+    if (accountScoped) return Number(accountScoped.unit_price || 0);
     return Number(state.salesProductPrices.find((price) => String(price.product_id) === String(productId))?.unit_price || 0);
 }
 
@@ -7507,7 +7538,9 @@ function renderAdminSalesOrderProductRows() {
                 priceInput.value = saved.price;
             } else if (orderType === 'company') {
                 const selectedProductId = saved.productId || productSelect?.value || '';
-                priceInput.value = selectedProductId ? String(getAdminProductDefaultPrice(selectedProductId)) : '';
+                const accountId = form.querySelector('select[name="account_id"]')?.value || '';
+                const specialistId = form.querySelector('select[name="specialist_id"]')?.value || '';
+                priceInput.value = selectedProductId ? String(getAdminProductDefaultPrice(selectedProductId, accountId, specialistId)) : '';
             } else {
                 priceInput.value = '';
             }
@@ -7520,7 +7553,9 @@ function renderAdminSalesOrderProductRows() {
         productSelect?.addEventListener('change', () => {
             if (!priceInput) return;
             if (orderType === 'company' && productSelect.value) {
-                priceInput.value = String(getAdminProductDefaultPrice(productSelect.value));
+                const accountId = form.querySelector('select[name="account_id"]')?.value || '';
+                const specialistId = form.querySelector('select[name="specialist_id"]')?.value || '';
+                priceInput.value = String(getAdminProductDefaultPrice(productSelect.value, accountId, specialistId));
             } else if (orderType === 'competitor') {
                 priceInput.value = '';
             }
@@ -7550,7 +7585,9 @@ function populateAdminSalesOrderProductOptions(rowIndex, companyId, selectedProd
     const priceInput = form.querySelector(`[name="order_price_${rowIndex}"]`);
     if (priceInput && orderType === 'company') {
         const selectedProduct = productSelect.value;
-        priceInput.value = selectedProduct ? String(getAdminProductDefaultPrice(selectedProduct)) : '';
+        const accountId = form.querySelector('select[name="account_id"]')?.value || '';
+        const specialistId = form.querySelector('select[name="specialist_id"]')?.value || '';
+        priceInput.value = selectedProduct ? String(getAdminProductDefaultPrice(selectedProduct, accountId, specialistId)) : '';
     }
 }
 
@@ -7986,6 +8023,17 @@ function computeSalesSummaryMetrics(orders = [], scope = null) {
             return (actual / Number(target.target_value || 1)) * 100;
         });
 
+    const accountTypeById = new Map(state.accounts.map((acc) => [String(acc.id), acc.account_type || '']));
+    const computeTypeAchievement = (type) => {
+        const targets = relevantAccountTargets.filter((target) => accountTypeById.get(String(target.account_id || '')) === type);
+        const targetTotal = targets.reduce((sum, target) => sum + Number(target.target_value || 0), 0);
+        const actualTotal = targets.reduce((sum, target) => {
+            const key = `${target.account_id || ''}::${target.specialist_id || ''}`;
+            return sum + Number(accountSalesValueMap.get(key) || 0);
+        }, 0);
+        return targetTotal > 0 ? (actualTotal / targetTotal) * 100 : 0;
+    };
+
     const latestProductTargets = new Map();
     relevantProductTargets.forEach((target) => {
         const key = `${target.product_id || ''}::${target.specialist_id || ''}`;
@@ -8011,6 +8059,8 @@ function computeSalesSummaryMetrics(orders = [], scope = null) {
         dmcValue,
         targetValue,
         valueAchievement,
+        upaAchievement: computeTypeAchievement('UPA'),
+        privateAchievement: computeTypeAchievement('Private'),
         unitsAchievementAvg,
         accountsAchievementAvg,
         competitorUnits,
@@ -8123,12 +8173,12 @@ function renderSalesStats(orders = []) {
     if (!container) return;
     const metrics = computeSalesSummaryMetrics(orders, getAdminSalesMetricScope(state.filters.sales.line || ''));
     container.innerHTML = `
-        <div class="stat-card"><h4>DMC Unit</h4><div class="value">${formatSalesStatValue(metrics.dmcUnits)}</div></div>
-        <div class="stat-card"><h4>DMC Value</h4><div class="value">${formatSalesStatValue(metrics.dmcValue)}</div></div>
+        <div class="stat-card"><h4>Sales Units</h4><div class="value">${formatSalesStatValue(metrics.dmcUnits)}</div></div>
+        <div class="stat-card"><h4>Sales Value</h4><div class="value">${formatSalesStatValue(metrics.dmcValue)}</div></div>
         <div class="stat-card"><h4>Target Value</h4><div class="value">${formatSalesStatValue(metrics.targetValue)}</div></div>
         <div class="stat-card"><h4>Achievement</h4><div class="value">${formatSalesStatPercent(metrics.valueAchievement)}</div></div>
-        <div class="stat-card"><h4>Units Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.unitsAchievementAvg)}</div></div>
-        <div class="stat-card"><h4>Accounts Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.accountsAchievementAvg)}</div></div>
+        <div class="stat-card"><h4>UPA Ach.</h4><div class="value">${formatSalesStatPercent(metrics.upaAchievement)}</div></div>
+        <div class="stat-card"><h4>Private Ach.</h4><div class="value">${formatSalesStatPercent(metrics.privateAchievement)}</div></div>
         <div class="stat-card"><h4>Competitor Units</h4><div class="value">${formatSalesStatValue(metrics.competitorUnits)}</div></div>
         <div class="stat-card"><h4>Competitor Value</h4><div class="value">${formatSalesStatValue(metrics.competitorValue)}</div></div>
     `;
@@ -8200,27 +8250,71 @@ function setupSalesTargetAccountFilters() {
     if (!container) return;
     const salesLines = getSalesOperationalLines();
     const oldestLine = getOldestSalesLine();
-    const specialists = state.employees.filter((emp) => emp.role === ROLES.EMPLOYEE);
-    const managers = state.employees.filter((emp) => emp.role === ROLES.MANAGER);
     container.innerHTML = `
         <select class="form-select" id="sales-target-account-line">${salesLines.map((line) => `<option value="${line.id}"${line.id === oldestLine ? ' selected' : ''}>${line.name}</option>`).join('')}</select>
-        <select class="form-select" id="sales-target-account-specialist"><option value="">All Specialists</option>${specialists.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}</select>
-        <select class="form-select" id="sales-target-account-manager"><option value="">All Managers</option>${managers.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}</select>
-        <select class="form-select" id="sales-target-account-type"><option value="">All Account Types</option>${ACCOUNT_TYPES.map((type) => `<option value="${type}">${type}</option>`).join('')}</select>
+        <select class="form-select" id="sales-target-account-specialist"></select>
+        <select class="form-select" id="sales-target-account-manager"></select>
+        <select class="form-select" id="sales-target-account-product"></select>
     `;
-    container.querySelectorAll('select').forEach((el) => el.addEventListener('change', () => renderSalesTargetAccounts()));
+
+    const refreshDependentOptions = () => {
+        const selectedLine = document.getElementById('sales-target-account-line')?.value || getOldestSalesLine();
+        const specialistSelect = document.getElementById('sales-target-account-specialist');
+        const managerSelect = document.getElementById('sales-target-account-manager');
+        const productSelect = document.getElementById('sales-target-account-product');
+        if (!specialistSelect || !managerSelect || !productSelect) return;
+
+        const previousSpecialist = specialistSelect.value;
+        const previousManager = managerSelect.value;
+        const previousProduct = productSelect.value;
+
+        const specialists = state.employees
+            .filter((emp) => emp.role === ROLES.EMPLOYEE && (!selectedLine || String(emp.line_id) === String(selectedLine)))
+            .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+        const managers = state.employees
+            .filter((emp) => emp.role === ROLES.MANAGER && (!selectedLine || String(emp.line_id) === String(selectedLine)))
+            .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+        const products = state.products
+            .filter((product) => product.is_company_product && (!selectedLine || String(product.line_id) === String(selectedLine)))
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+        specialistSelect.innerHTML = `<option value="">All Specialists</option>${specialists.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}`;
+        managerSelect.innerHTML = `<option value="">All Managers</option>${managers.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}`;
+        productSelect.innerHTML = `<option value="">All Products</option>${products.map((product) => `<option value="${product.id}">${escapeOptionText(product.name || '')}</option>`).join('')}`;
+
+        if (previousSpecialist && specialists.some((emp) => String(emp.id) === String(previousSpecialist))) specialistSelect.value = previousSpecialist;
+        if (previousManager && managers.some((emp) => String(emp.id) === String(previousManager))) managerSelect.value = previousManager;
+        if (previousProduct && products.some((product) => String(product.id) === String(previousProduct))) productSelect.value = previousProduct;
+    };
+
+    container.querySelector('#sales-target-account-line')?.addEventListener('change', () => {
+        refreshDependentOptions();
+        renderSalesTargetAccounts();
+    });
+    container.querySelector('#sales-target-account-specialist')?.addEventListener('change', () => renderSalesTargetAccounts());
+    container.querySelector('#sales-target-account-manager')?.addEventListener('change', () => renderSalesTargetAccounts());
+    container.querySelector('#sales-target-account-product')?.addEventListener('change', () => renderSalesTargetAccounts());
+
+    refreshDependentOptions();
 }
 
 function getSalesTargetFilteredAccounts() {
     const line = document.getElementById('sales-target-account-line')?.value || getOldestSalesLine();
     const specialist = document.getElementById('sales-target-account-specialist')?.value || '';
     const manager = document.getElementById('sales-target-account-manager')?.value || '';
-    const accountType = document.getElementById('sales-target-account-type')?.value || '';
+    const productId = document.getElementById('sales-target-account-product')?.value || '';
     const approvedAccounts = state.accounts.filter((acc) => acc.status === APPROVAL_STATUS.APPROVED);
     return approvedAccounts.filter((acc) => {
         if (line && acc.line_id !== line) return false;
         if (specialist && String(acc.owner_employee_id) !== String(specialist)) return false;
-        if (accountType && acc.account_type !== accountType) return false;
+        if (productId) {
+            const hasProductTarget = state.salesAccountProductTargets.some((target) =>
+                String(target.account_id) === String(acc.id)
+                && String(target.specialist_id) === String(acc.owner_employee_id)
+                && String(target.product_id) === String(productId)
+            );
+            if (!hasProductTarget) return false;
+        }
         if (manager) {
             const owner = state.employeeById?.get(String(acc.owner_employee_id));
             const dm = owner?.direct_manager_id ? String(owner.direct_manager_id) : '';
@@ -8233,33 +8327,76 @@ function getSalesTargetFilteredAccounts() {
 
 function renderSalesTargetAccounts() {
     const accounts = getSalesTargetFilteredAccounts();
-    const targetMap = new Map(state.salesAccountTargets.map((target) => [`${target.account_id}::${target.specialist_id}`, target]));
+    const selectedLine = document.getElementById('sales-target-account-line')?.value || getOldestSalesLine();
+    const selectedProductId = document.getElementById('sales-target-account-product')?.value || '';
+    const lineProducts = state.products
+        .filter((product) => product.is_company_product && (!selectedLine || String(product.line_id) === String(selectedLine)))
+        .filter((product) => !selectedProductId || String(product.id) === String(selectedProductId))
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    const accountProductMap = new Map(
+        state.salesAccountProductTargets.map((target) => [
+            `${target.account_id}::${target.specialist_id}::${target.product_id}`,
+            target
+        ])
+    );
+
     const tableData = accounts.map((acc) => {
-        const target = targetMap.get(`${acc.id}::${acc.owner_employee_id}`);
-        return {
+        const row = {
             id: acc.id,
             specialist_id: acc.owner_employee_id,
             account: acc.name,
             specialist: acc.owner_name || '',
             line: acc.line_name || '',
-            target_value: Number(target?.target_value || 0)
+            account_type: acc.account_type || '',
+            target_units: 0,
+            target_value: 0
         };
+
+        lineProducts.forEach((product) => {
+            const target = accountProductMap.get(`${acc.id}::${acc.owner_employee_id}::${product.id}`);
+            const price = Number(target?.unit_price || 0);
+            const units = Number(target?.target_units || 0);
+            const value = Number(target?.target_value || 0);
+            row[`p_${product.id}_price`] = price;
+            row[`p_${product.id}_units`] = units;
+            row[`p_${product.id}_value`] = value;
+            row.target_units += units;
+            row.target_value += value;
+        });
+
+        return row;
     });
     const stats = document.getElementById('sales-target-accounts-stats');
     if (stats) {
         stats.innerHTML = `
-            <div class="stat-card"><h4>Accounts Number</h4><div class="value">${formatNumber(ceilStatNumber(tableData.length))}</div></div>
-            <div class="stat-card"><h4>Accounts Target</h4><div class="value">${formatNumber(ceilStatNumber(tableData.reduce((s, i) => s + Number(i.target_value || 0), 0)))}</div></div>
+            <div class="stat-card"><h4>Total Accounts</h4><div class="value">${formatNumber(ceilStatNumber(tableData.length))}</div></div>
+            <div class="stat-card"><h4>Target Units</h4><div class="value">${formatNumber(ceilStatNumber(tableData.reduce((s, i) => s + Number(i.target_units || 0), 0)))}</div></div>
+            <div class="stat-card"><h4>Target Value</h4><div class="value">${formatNumber(ceilStatNumber(tableData.reduce((s, i) => s + Number(i.target_value || 0), 0)))}</div></div>
         `;
     }
     const columns = [
-        { title: 'Account', field: 'account', minWidth: 220, headerFilter: 'input' },
+        { title: 'Account', field: 'account', minWidth: 220, headerFilter: 'input', frozen: true },
         { title: 'Product Specialist', field: 'specialist', minWidth: 220, headerFilter: 'input' },
         { title: 'Line', field: 'line', width: 160, headerFilter: 'input' },
+        { title: 'Account Type', field: 'account_type', width: 140, headerFilter: 'input' },
+        ...lineProducts.map((product, index) => {
+            const bandClass = index % 2 === 0 ? 'target-band-alt' : '';
+            return {
+                title: escapeOptionText(product.name || ''),
+                headerHozAlign: 'center',
+                cssClass: bandClass,
+                columns: [
+                    { title: 'Price', field: `p_${product.id}_price`, formatter: tableFormatters.number(2), width: 130, hozAlign: 'center', headerHozAlign: 'center', cssClass: bandClass },
+                    { title: 'Units', field: `p_${product.id}_units`, formatter: tableFormatters.number(), width: 120, hozAlign: 'center', headerHozAlign: 'center', cssClass: bandClass },
+                    { title: 'Value', field: `p_${product.id}_value`, formatter: tableFormatters.number(2), width: 140, hozAlign: 'center', headerHozAlign: 'center', cssClass: bandClass }
+                ]
+            };
+        }),
         { title: 'Target Value', field: 'target_value', formatter: tableFormatters.number(2), width: 170 },
         { title: 'Action', field: 'actions', width: 140, hozAlign: 'center', formatter: tableFormatters.actions([{ name: 'edit', label: 'Edit', icon: 'bi bi-pencil', variant: 'btn-gradient' }]), headerSort: false }
     ];
-    state.tables.salesTargetAccounts = createTable('sales-target-accounts-table', columns, tableData, { height: 500 });
+    state.tables.salesTargetAccounts = createTable('sales-target-accounts-table', columns, tableData, { height: 500, renderHorizontal: 'basic', layout: 'fitDataFill' });
     bindTableActions(state.tables.salesTargetAccounts, { edit: (rowData) => editSalesAccountTarget(rowData) });
 }
 
@@ -8268,14 +8405,35 @@ function setupSalesTargetProductFilters() {
     if (!container) return;
     const salesLines = getSalesOperationalLines();
     const oldestLine = getOldestSalesLine();
-    const specialists = state.employees.filter((emp) => emp.role === ROLES.EMPLOYEE);
-    const managers = state.employees.filter((emp) => emp.role === ROLES.MANAGER);
     container.innerHTML = `
         <select class="form-select" id="sales-target-product-line">${salesLines.map((line) => `<option value="${line.id}"${line.id === oldestLine ? ' selected' : ''}>${line.name}</option>`).join('')}</select>
-        <select class="form-select" id="sales-target-product-specialist"><option value="">All Specialists</option>${specialists.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}</select>
-        <select class="form-select" id="sales-target-product-manager"><option value="">All Managers</option>${managers.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}</select>
+        <select class="form-select" id="sales-target-product-specialist"></select>
+        <select class="form-select" id="sales-target-product-manager"></select>
         <select class="form-select" id="sales-target-product-product"><option value="">All Products</option></select>
     `;
+
+    const refreshRoleOptions = () => {
+        const selectedLine = document.getElementById('sales-target-product-line')?.value || getOldestSalesLine();
+        const specialistSelect = document.getElementById('sales-target-product-specialist');
+        const managerSelect = document.getElementById('sales-target-product-manager');
+        if (!specialistSelect || !managerSelect) return;
+
+        const previousSpecialist = specialistSelect.value;
+        const previousManager = managerSelect.value;
+
+        const specialists = state.employees
+            .filter((emp) => emp.role === ROLES.EMPLOYEE && (!selectedLine || String(emp.line_id) === String(selectedLine)))
+            .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+        const managers = state.employees
+            .filter((emp) => emp.role === ROLES.MANAGER && (!selectedLine || String(emp.line_id) === String(selectedLine)))
+            .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+
+        specialistSelect.innerHTML = `<option value="">All Specialists</option>${specialists.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}`;
+        managerSelect.innerHTML = `<option value="">All Managers</option>${managers.map((emp) => `<option value="${emp.id}">${emp.full_name}</option>`).join('')}`;
+
+        if (previousSpecialist && specialists.some((emp) => String(emp.id) === String(previousSpecialist))) specialistSelect.value = previousSpecialist;
+        if (previousManager && managers.some((emp) => String(emp.id) === String(previousManager))) managerSelect.value = previousManager;
+    };
 
     const refreshProductOptions = () => {
         const selectedLine = document.getElementById('sales-target-product-line')?.value || getOldestSalesLine();
@@ -8305,6 +8463,7 @@ function setupSalesTargetProductFilters() {
     };
 
     container.querySelector('#sales-target-product-line')?.addEventListener('change', () => {
+        refreshRoleOptions();
         refreshProductOptions();
         renderSalesTargetProducts();
     });
@@ -8318,6 +8477,7 @@ function setupSalesTargetProductFilters() {
     });
     container.querySelector('#sales-target-product-product')?.addEventListener('change', () => renderSalesTargetProducts());
 
+    refreshRoleOptions();
     refreshProductOptions();
 }
 
@@ -8338,36 +8498,45 @@ function getFilteredSalesTargetProducts() {
 
 function renderSalesTargetProducts() {
     const { products, specialists } = getFilteredSalesTargetProducts();
-    const pricesByProduct = new Map(state.salesProductPrices.map((price) => [String(price.product_id), Number(price.unit_price || 0)]));
     const targetsByKey = new Map();
-    state.salesProductTargets.forEach((target) => {
+    state.salesAccountProductTargets.forEach((target) => {
         const key = `${target.product_id}::${target.specialist_id}`;
-        const prev = targetsByKey.get(key);
-        if (!prev || new Date(prev.effective_from || 0) < new Date(target.effective_from || 0)) targetsByKey.set(key, target);
+        const prev = targetsByKey.get(key) || { target_units: 0, target_value: 0 };
+        prev.target_units += Number(target.target_units || 0);
+        prev.target_value += Number(target.target_value || 0);
+        targetsByKey.set(key, prev);
     });
 
     const columns = [{ title: 'Product', field: 'product_name', minWidth: 220, frozen: true }];
-    specialists.forEach((sp) => {
+    specialists.forEach((sp, index) => {
+        const bandClass = index % 2 === 0 ? 'target-band-alt' : '';
         columns.push({
             title: sp.full_name,
+            headerHozAlign: 'center',
+            cssClass: bandClass,
             columns: [
-                { title: 'Target Units', field: `target_units_${sp.id}`, formatter: tableFormatters.number(), width: 140 },
-                { title: 'Target Value', field: `target_value_${sp.id}`, formatter: tableFormatters.number(2), width: 150 }
+                { title: 'Target Units', field: `target_units_${sp.id}`, formatter: tableFormatters.number(), width: 140, hozAlign: 'center', headerHozAlign: 'center', cssClass: bandClass },
+                { title: 'Target Value', field: `target_value_${sp.id}`, formatter: tableFormatters.number(2), width: 150, hozAlign: 'center', headerHozAlign: 'center', cssClass: bandClass }
             ]
         });
     });
-    columns.push({ title: 'Unit Price', field: 'unit_price', formatter: tableFormatters.number(2), width: 140 });
-    columns.push({ title: 'Action', field: 'actions', width: 240, hozAlign: 'center', formatter: tableFormatters.actions([{ name: 'edit-price', label: 'Edit Price', icon: 'bi bi-currency-dollar', variant: 'btn-outline-ghost' }, { name: 'edit-target', label: 'Edit Target', icon: 'bi bi-pencil', variant: 'btn-gradient' }]), headerSort: false });
 
     const data = products.map((product) => {
-        const row = { id: product.id, product_name: product.name, line_id: product.line_id, unit_price: pricesByProduct.get(String(product.id)) || 0 };
+        const row = { id: product.id, product_name: product.name, line_id: product.line_id, total_units: 0, total_target: 0 };
         specialists.forEach((sp) => {
             const target = targetsByKey.get(`${product.id}::${sp.id}`);
-            row[`target_units_${sp.id}`] = Number(target?.target_units || 0);
-            row[`target_value_${sp.id}`] = Number(target?.target_value || 0);
+            const units = Number(target?.target_units || 0);
+            const value = Number(target?.target_value || 0);
+            row[`target_units_${sp.id}`] = units;
+            row[`target_value_${sp.id}`] = value;
+            row.total_units += units;
+            row.total_target += value;
         });
         return row;
     });
+
+    columns.push({ title: 'Total Units', field: 'total_units', formatter: tableFormatters.number(), width: 140, hozAlign: 'center', headerHozAlign: 'center' });
+    columns.push({ title: 'Total Target', field: 'total_target', formatter: tableFormatters.number(2), width: 150, hozAlign: 'center', headerHozAlign: 'center' });
 
     const stats = document.getElementById('sales-target-products-stats');
     if (stats) {
@@ -8380,11 +8549,7 @@ function renderSalesTargetProducts() {
         `;
     }
 
-    state.tables.salesTargetProducts = createTable('sales-target-products-table', columns, data, { height: 520 });
-    bindTableActions(state.tables.salesTargetProducts, {
-        'edit-price': (rowData) => editSalesProductPrice(rowData),
-        'edit-target': (rowData) => editSalesProductTarget(rowData, specialists)
-    });
+    state.tables.salesTargetProducts = createTable('sales-target-products-table', columns, data, { height: 520, renderHorizontal: 'basic', layout: 'fitDataFill' });
 }
 
 function renderSalesTargetSection() {
@@ -8420,12 +8585,12 @@ function renderSalesDashboardSection() {
     const orders = state.salesOrders.filter((order) => !selectedLine || order.line_id === selectedLine);
     const metrics = computeSalesSummaryMetrics(orders, getAdminSalesMetricScope(selectedLine, { specialist: '', manager: '', accountType: '', accountName: '' }));
     stats.innerHTML = `
-        <div class="stat-card"><h4>DMC Unit</h4><div class="value">${formatSalesStatValue(metrics.dmcUnits)}</div></div>
-        <div class="stat-card"><h4>DMC Value</h4><div class="value">${formatSalesStatValue(metrics.dmcValue)}</div></div>
+        <div class="stat-card"><h4>Sales Units</h4><div class="value">${formatSalesStatValue(metrics.dmcUnits)}</div></div>
+        <div class="stat-card"><h4>Sales Value</h4><div class="value">${formatSalesStatValue(metrics.dmcValue)}</div></div>
         <div class="stat-card"><h4>Target Value</h4><div class="value">${formatSalesStatValue(metrics.targetValue)}</div></div>
         <div class="stat-card"><h4>Achievement</h4><div class="value">${formatSalesStatPercent(metrics.valueAchievement)}</div></div>
-        <div class="stat-card"><h4>Units Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.unitsAchievementAvg)}</div></div>
-        <div class="stat-card"><h4>Accounts Ach.%</h4><div class="value">${formatSalesStatPercent(metrics.accountsAchievementAvg)}</div></div>
+        <div class="stat-card"><h4>UPA Ach.</h4><div class="value">${formatSalesStatPercent(metrics.upaAchievement)}</div></div>
+        <div class="stat-card"><h4>Private Ach.</h4><div class="value">${formatSalesStatPercent(metrics.privateAchievement)}</div></div>
         <div class="stat-card"><h4>Competitor Units</h4><div class="value">${formatSalesStatValue(metrics.competitorUnits)}</div></div>
         <div class="stat-card"><h4>Competitor Value</h4><div class="value">${formatSalesStatValue(metrics.competitorValue)}</div></div>
     `;
@@ -8472,7 +8637,7 @@ function ensureSalesTargetEditModal() {
     };
 }
 
-function openSalesTargetEditModal({ title, bodyHtml, submitLabel = 'Save', onSubmit }) {
+function openSalesTargetEditModal({ title, bodyHtml, submitLabel = 'Save', onSubmit, onOpen }) {
     const modalRefs = ensureSalesTargetEditModal();
     if (!modalRefs.modal || !modalRefs.formEl || !modalRefs.bodyEl || !modalRefs.titleEl) return;
     modalRefs.titleEl.textContent = title || 'Edit';
@@ -8491,117 +8656,100 @@ function openSalesTargetEditModal({ title, bodyHtml, submitLabel = 'Save', onSub
         }
     };
     modalRefs.formEl.addEventListener('submit', submitHandler, { once: true });
+    if (typeof onOpen === 'function') {
+        onOpen(modalRefs);
+    }
     modalRefs.modal.show();
 }
 
 async function editSalesAccountTarget(rowData) {
-    openSalesTargetEditModal({
-        title: `Edit Account Target - ${rowData.account || 'Account'}`,
-        submitLabel: 'Save Target',
-        bodyHtml: `
-            <div>
-                <label class="form-label">Target Value</label>
-                <input type="number" class="form-control" name="target_value" min="0" step="1" value="${Number(rowData.target_value || 0)}" required>
-            </div>
-        `,
-        onSubmit: async (payload) => {
-            const value = Number(payload.target_value || 0);
-            if (Number.isNaN(value) || value < 0) throw new Error('Invalid target value.');
-            await handleSupabase(
-                supabase.from('sales_account_targets').upsert({
-                    account_id: rowData.id,
-                    specialist_id: rowData.specialist_id,
-                    line_id: state.accounts.find((acc) => acc.id === rowData.id)?.line_id || null,
-                    target_value: value,
-                    created_by: state.session.employeeId,
-                    updated_by: state.session.employeeId
-                }, { onConflict: 'account_id,specialist_id,line_id' }),
-                'upsert sales account target'
-            );
-            await loadSalesTargets();
-            renderSalesTargetAccounts();
-        }
-    });
-}
+    const selectedLine = document.getElementById('sales-target-account-line')?.value || getOldestSalesLine();
+    const lineProducts = state.products
+        .filter((product) => product.is_company_product && (!selectedLine || String(product.line_id) === String(selectedLine)))
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-async function editSalesProductPrice(rowData) {
-    openSalesTargetEditModal({
-        title: `Edit Unit Price - ${rowData.product_name || 'Product'}`,
-        submitLabel: 'Save Price',
-        bodyHtml: `
-            <div>
-                <label class="form-label">Unit Price</label>
-                <input type="number" class="form-control" name="unit_price" min="0" step="0.01" value="${Number(rowData.unit_price || 0)}" required>
-            </div>
-        `,
-        onSubmit: async (payload) => {
-            const value = Number(payload.unit_price || 0);
-            if (Number.isNaN(value) || value < 0) throw new Error('Invalid unit price.');
-            await handleSupabase(
-                supabase.from('sales_product_prices').upsert({
-                    product_id: rowData.id,
-                    line_id: rowData.line_id || null,
-                    unit_price: value,
-                    updated_by: state.session.employeeId
-                }),
-                'upsert sales product price'
-            );
-            await loadSalesTargets();
-            renderSalesTargetProducts();
-        }
-    });
-}
-
-async function editSalesProductTarget(rowData, specialists = []) {
-    if (!specialists.length) {
-        showToast('No specialists found for current filter.', 'warning');
+    if (!lineProducts.length) {
+        showToast('No company products found for selected line.', 'warning');
         return;
     }
-    const specialistOptions = specialists
-        .map((sp) => `<option value="${sp.id}">${escapeOptionText(sp.full_name || '')}</option>`)
-        .join('');
-    const defaultSpecialistId = String(specialists[0]?.id || '');
+
+    const defaultProductId = String(lineProducts[0].id);
+    const findCurrentTarget = (productId) => state.salesAccountProductTargets.find((target) =>
+        String(target.account_id) === String(rowData.id)
+        && String(target.specialist_id) === String(rowData.specialist_id)
+        && String(target.product_id) === String(productId)
+    );
+    const currentTarget = findCurrentTarget(defaultProductId);
 
     openSalesTargetEditModal({
-        title: `Edit Product Target - ${rowData.product_name || 'Product'}`,
-        submitLabel: 'Save Target',
+        title: `Edit Account Target - ${rowData.account || 'Account'}`,
+        submitLabel: 'Save Product Target',
         bodyHtml: `
             <div>
-                <label class="form-label">Product Specialist</label>
-                <select class="form-select" name="specialist_id" required>
-                    ${specialistOptions}
+                <label class="form-label">Product</label>
+                <select class="form-select" name="product_id" id="sales-target-edit-product" required>
+                    ${lineProducts.map((product) => `<option value="${product.id}">${escapeOptionText(product.name || '')}</option>`).join('')}
                 </select>
             </div>
             <div>
+                <label class="form-label">Unit Price</label>
+                <input type="number" class="form-control" name="unit_price" id="sales-target-edit-price" min="0" step="0.01" value="${Number(currentTarget?.unit_price || 0)}" required>
+            </div>
+            <div>
                 <label class="form-label">Target Units</label>
-                <input type="number" class="form-control" name="target_units" min="0" step="1" value="0" required>
+                <input type="number" class="form-control" name="target_units" id="sales-target-edit-units" min="0" step="1" value="${Number(currentTarget?.target_units || 0)}" required>
+            </div>
+            <div>
+                <label class="form-label">Target Value</label>
+                <input type="number" class="form-control" name="target_value_preview" id="sales-target-edit-value" value="${Number(currentTarget?.target_value || 0)}" readonly>
             </div>
         `,
         onSubmit: async (payload) => {
-            const specialist = specialists.find((sp) => String(sp.id) === String(payload.specialist_id || defaultSpecialistId));
-            if (!specialist) throw new Error('Invalid specialist selection.');
-            const units = Number(payload.target_units || 0);
-            if (Number.isNaN(units) || units < 0) throw new Error('Invalid units value.');
+            const productId = payload.product_id;
+            const unitPrice = Number(payload.unit_price || 0);
+            const targetUnits = Number(payload.target_units || 0);
+            if (!productId) throw new Error('Product is required.');
+            if (Number.isNaN(unitPrice) || unitPrice < 0) throw new Error('Invalid unit price.');
+            if (Number.isNaN(targetUnits) || targetUnits < 0) throw new Error('Invalid target units.');
 
-            const price = Number(state.salesProductPrices.find((p) => String(p.product_id) === String(rowData.id))?.unit_price || 0);
             await handleSupabase(
-                supabase.from('sales_product_targets').upsert(
-                    {
-                        product_id: rowData.id,
-                        specialist_id: specialist.id,
-                        line_id: rowData.line_id || specialist.line_id || null,
-                        target_units: units,
-                        unit_price_snapshot: price,
-                        effective_from: new Date().toISOString().slice(0, 10),
-                        created_by: state.session.employeeId,
-                        updated_by: state.session.employeeId
-                    },
-                    { onConflict: 'product_id,specialist_id,line_id,effective_from' }
-                ),
-                'upsert sales product target'
+                supabase.from('sales_account_product_targets').upsert({
+                    account_id: rowData.id,
+                    specialist_id: rowData.specialist_id,
+                    line_id: state.accounts.find((acc) => acc.id === rowData.id)?.line_id || selectedLine || null,
+                    product_id: productId,
+                    unit_price: unitPrice,
+                    target_units: targetUnits,
+                    created_by: state.session.employeeId,
+                    updated_by: state.session.employeeId
+                }, { onConflict: 'account_id,specialist_id,product_id' }),
+                'upsert sales account product target'
             );
             await loadSalesTargets();
+            renderSalesTargetAccounts();
             renderSalesTargetProducts();
+        },
+        onOpen: (modalRefs) => {
+            const productSelect = modalRefs?.bodyEl?.querySelector('#sales-target-edit-product');
+            const priceInput = modalRefs?.bodyEl?.querySelector('#sales-target-edit-price');
+            const unitsInput = modalRefs?.bodyEl?.querySelector('#sales-target-edit-units');
+            const valueInput = modalRefs?.bodyEl?.querySelector('#sales-target-edit-value');
+            const recalc = () => {
+                if (!valueInput) return;
+                const price = Number(priceInput?.value || 0);
+                const units = Number(unitsInput?.value || 0);
+                valueInput.value = String((price * units).toFixed(2));
+            };
+            const applyProductTarget = () => {
+                const target = findCurrentTarget(productSelect?.value || '');
+                if (priceInput) priceInput.value = String(Number(target?.unit_price || 0));
+                if (unitsInput) unitsInput.value = String(Number(target?.target_units || 0));
+                recalc();
+            };
+            productSelect?.addEventListener('change', applyProductTarget);
+            priceInput?.addEventListener('input', recalc);
+            unitsInput?.addEventListener('input', recalc);
+            applyProductTarget();
         }
     });
 }
