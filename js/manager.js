@@ -25,7 +25,7 @@ import {
     loadAllPages,
     loadAllByIdBatches
 } from './utils.js';
-import { createTable, tableFormatters, bindTableActions, ensureTabulator } from './tables.js';
+import { createTable, tableFormatters, bindTableActions, ensureTabulator, enforceFrozenColumnSolid } from './tables.js';
 import { applyChartDefaults, resetChartDefaults, buildBarChart, buildLineChart, buildDoughnutChart, buildPieChart, destroyChart } from './charts.js';
 import { fetchNotifications, markNotificationsRead, createNotification } from './notifications.js';
 import { fetchReceivedMessages, getUnreadMessageCount, markMessageAsRead } from './messages.js';
@@ -4760,6 +4760,7 @@ function renderTeamSalesTargetAccounts() {
         }),
         { title: 'Target Value', field: 'target_value', formatter: tableFormatters.number(2), width: 170 }
     ], data, { height: 500, renderHorizontal: 'basic', layout: 'fitDataFill' });
+    enforceFrozenColumnSolid(state.tables.teamSalesTargetAccounts, 'account');
 }
 
 function setupTeamSalesTargetProductFilters() {
@@ -4852,6 +4853,7 @@ function renderTeamSalesTargetProducts() {
         `;
     }
     state.tables.teamSalesTargetProducts = createTable('team-sales-target-products-table', columns, data, { height: 520, renderHorizontal: 'basic', layout: 'fitDataFill' });
+    enforceFrozenColumnSolid(state.tables.teamSalesTargetProducts, 'product_name');
 }
 
 function renderTeamSalesTargetSection() {

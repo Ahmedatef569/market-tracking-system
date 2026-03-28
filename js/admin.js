@@ -25,7 +25,7 @@ import {
     loadAllPages,
     loadAllByIdBatches
 } from './utils.js';
-import { createTable, tableFormatters, bindTableActions, exportTableToExcel, ensureTabulator } from './tables.js';
+import { createTable, tableFormatters, bindTableActions, exportTableToExcel, ensureTabulator, enforceFrozenColumnSolid } from './tables.js';
 import { applyChartDefaults, resetChartDefaults, buildLineChart, buildBarChart, buildDoughnutChart, buildPieChart, destroyChart } from './charts.js';
 import { fetchNotifications, markNotificationsRead, createNotification } from './notifications.js';
 import { fetchSentMessages, fetchReceivedMessages, getUnreadMessageCount, sendMessage, deleteMessages, markMessageAsRead } from './messages.js';
@@ -8344,6 +8344,7 @@ function renderSalesTargetAccounts() {
     const tableData = accounts.map((acc) => {
         const row = {
             id: acc.id,
+            account_id: acc.id,
             specialist_id: acc.owner_employee_id,
             account: acc.name,
             specialist: acc.owner_name || '',
@@ -8397,6 +8398,7 @@ function renderSalesTargetAccounts() {
         { title: 'Action', field: 'actions', width: 140, hozAlign: 'center', formatter: tableFormatters.actions([{ name: 'edit', label: 'Edit', icon: 'bi bi-pencil', variant: 'btn-gradient' }]), headerSort: false }
     ];
     state.tables.salesTargetAccounts = createTable('sales-target-accounts-table', columns, tableData, { height: 500, renderHorizontal: 'basic', layout: 'fitDataFill' });
+    enforceFrozenColumnSolid(state.tables.salesTargetAccounts, 'account');
     bindTableActions(state.tables.salesTargetAccounts, { edit: (rowData) => editSalesAccountTarget(rowData) });
 }
 
@@ -8550,6 +8552,7 @@ function renderSalesTargetProducts() {
     }
 
     state.tables.salesTargetProducts = createTable('sales-target-products-table', columns, data, { height: 520, renderHorizontal: 'basic', layout: 'fitDataFill' });
+    enforceFrozenColumnSolid(state.tables.salesTargetProducts, 'product_name');
 }
 
 function renderSalesTargetSection() {
@@ -8663,6 +8666,7 @@ function openSalesTargetEditModal({ title, bodyHtml, submitLabel = 'Save', onSub
 }
 
 async function editSalesAccountTarget(rowData) {
+    const accountId = rowData.account_id || rowData.id;
     const selectedLine = document.getElementById('sales-target-account-line')?.value || getOldestSalesLine();
     const lineProducts = state.products
         .filter((product) => product.is_company_product && (!selectedLine || String(product.line_id) === String(selectedLine)))
@@ -8675,7 +8679,7 @@ async function editSalesAccountTarget(rowData) {
 
     const defaultProductId = String(lineProducts[0].id);
     const findCurrentTarget = (productId) => state.salesAccountProductTargets.find((target) =>
-        String(target.account_id) === String(rowData.id)
+        String(target.account_id) === String(accountId)
         && String(target.specialist_id) === String(rowData.specialist_id)
         && String(target.product_id) === String(productId)
     );
@@ -8714,9 +8718,9 @@ async function editSalesAccountTarget(rowData) {
 
             await handleSupabase(
                 supabase.from('sales_account_product_targets').upsert({
-                    account_id: rowData.id,
+                    account_id: accountId,
                     specialist_id: rowData.specialist_id,
-                    line_id: state.accounts.find((acc) => acc.id === rowData.id)?.line_id || selectedLine || null,
+                    line_id: state.accounts.find((acc) => String(acc.id) === String(accountId))?.line_id || selectedLine || null,
                     product_id: productId,
                     unit_price: unitPrice,
                     target_units: targetUnits,

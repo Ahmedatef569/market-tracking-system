@@ -177,3 +177,45 @@ export function exportTableToExcel(table, filename) {
     if (!table) return;
     table.download('xlsx', `${filename}.xlsx`, { sheetName: 'Sheet1' });
 }
+
+export function enforceFrozenColumnSolid(table, field) {
+    if (!table || !field) return;
+
+    const applySolid = () => {
+        const isLight = document.body?.dataset?.theme === 'light';
+        const bg = isLight ? '#ffffff' : '#0f172a';
+        const fg = isLight ? '#0f172a' : '#f8fafc';
+
+        const col = table.getColumn(field);
+        const headerEl = col?.getElement?.();
+        if (headerEl) {
+            headerEl.style.backgroundColor = bg;
+            headerEl.style.color = fg;
+            headerEl.style.opacity = '1';
+            headerEl.style.zIndex = '50';
+            headerEl.style.boxShadow = isLight ? '2px 0 0 rgba(148,163,184,0.22)' : '2px 0 0 rgba(148,163,184,0.25)';
+        }
+
+        table.getRows().forEach((row) => {
+            const cell = row.getCell(field);
+            const el = cell?.getElement?.();
+            if (!el) return;
+            el.style.backgroundColor = bg;
+            el.style.color = fg;
+            el.style.opacity = '1';
+            el.style.zIndex = '45';
+            el.style.boxShadow = isLight ? '2px 0 0 rgba(148,163,184,0.20)' : '2px 0 0 rgba(148,163,184,0.22)';
+        });
+    };
+
+    applySolid();
+    table.on('renderComplete', applySolid);
+    table.on('dataProcessed', applySolid);
+
+    if (!table._themeSolidListenerAttached) {
+        table._themeSolidListenerAttached = true;
+        window.addEventListener('themeChanged', () => {
+            requestAnimationFrame(applySolid);
+        });
+    }
+}

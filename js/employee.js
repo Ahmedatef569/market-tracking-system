@@ -25,7 +25,7 @@ import {
     loadAllPages,
     loadAllByIdBatches
 } from './utils.js';
-import { createTable, tableFormatters, bindTableActions, ensureTabulator } from './tables.js';
+import { createTable, tableFormatters, bindTableActions, ensureTabulator, enforceFrozenColumnSolid } from './tables.js';
 import { applyChartDefaults, resetChartDefaults, buildLineChart, buildBarChart, buildDoughnutChart, buildPieChart, destroyChart } from './charts.js';
 import { fetchNotifications, markNotificationsRead, createNotification } from './notifications.js';
 import { fetchReceivedMessages, getUnreadMessageCount, markMessageAsRead } from './messages.js';
@@ -4552,6 +4552,7 @@ function renderMySalesTargetAccounts() {
         }),
         { title: 'Target Value', field: 'target_value', formatter: tableFormatters.number(2), width: 170 }
     ], data, { height: 500, renderHorizontal: 'basic', layout: 'fitDataFill' });
+    enforceFrozenColumnSolid(state.tables.mySalesTargetAccounts, 'account');
 }
 
 function setupMySalesTargetProductFilters() {
@@ -4607,6 +4608,7 @@ function renderMySalesTargetProducts() {
         { title: 'Total Units', field: 'target_units', formatter: tableFormatters.number(), width: 140, hozAlign: 'center', headerHozAlign: 'center' },
         { title: 'Total Target', field: 'total_target', formatter: tableFormatters.number(2), width: 160, hozAlign: 'center', headerHozAlign: 'center' }
     ], data, { height: 520, renderHorizontal: 'basic', layout: 'fitDataFill' });
+    enforceFrozenColumnSolid(state.tables.mySalesTargetProducts, 'product_name');
 }
 
 function renderMySalesTargetSection() {
