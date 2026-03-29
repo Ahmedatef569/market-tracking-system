@@ -4478,17 +4478,24 @@ function setupMySalesTargetAccountFilters() {
     let products = state.products.filter((product) => product.is_company_product && (!myLineId || String(product.line_id) === String(myLineId)));
     products = products.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     container.innerHTML = `
+        <select class="form-select" id="my-sales-target-account-type">
+            <option value="">All Account Types</option>
+            ${ACCOUNT_TYPES.map((type) => `<option value="${type}">${type}</option>`).join('')}
+        </select>
         <select class="form-select" id="my-sales-target-account-product">
             <option value="">All Products</option>
             ${products.map((product) => `<option value="${product.id}">${escapeOptionText(product.name || '')}</option>`).join('')}
         </select>
     `;
+    container.querySelector('#my-sales-target-account-type')?.addEventListener('change', () => renderMySalesTargetAccounts());
     container.querySelector('#my-sales-target-account-product')?.addEventListener('change', () => renderMySalesTargetAccounts());
 }
 
 function renderMySalesTargetAccounts() {
+    const accountTypeFilter = document.getElementById('my-sales-target-account-type')?.value || '';
     const productFilter = document.getElementById('my-sales-target-account-product')?.value || '';
     let accounts = state.accounts.filter((acc) => acc.status === APPROVAL_STATUS.APPROVED && String(acc.owner_employee_id) === String(state.session.employeeId));
+    if (accountTypeFilter) accounts = accounts.filter((acc) => String(acc.account_type || '') === String(accountTypeFilter));
     if (productFilter) {
         accounts = accounts.filter((acc) => state.salesAccountProductTargets.some((target) =>
             String(target.account_id) === String(acc.id)
@@ -4499,6 +4506,7 @@ function renderMySalesTargetAccounts() {
     const lineId = state.session.employee?.lineId || state.session.employee?.line_id || '';
     const lineProducts = state.products
         .filter((product) => product.is_company_product && (!lineId || String(product.line_id) === String(lineId)))
+        .filter((product) => !productFilter || String(product.id) === String(productFilter))
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     const accountProductMap = new Map(state.salesAccountProductTargets.map((target) => [`${target.account_id}::${target.product_id}`, target]));
     const data = accounts.map((acc) => {
@@ -4562,22 +4570,33 @@ function setupMySalesTargetProductFilters() {
     let products = state.products.filter((product) => product.is_company_product && (!myLineId || String(product.line_id) === String(myLineId)));
     products = products.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     container.innerHTML = `
+        <select class="form-select" id="my-sales-target-product-account-type">
+            <option value="">All Account Types</option>
+            ${ACCOUNT_TYPES.map((type) => `<option value="${type}">${type}</option>`).join('')}
+        </select>
         <select class="form-select" id="my-sales-target-product-product">
             <option value="">All Products</option>
             ${products.map((product) => `<option value="${product.id}">${escapeOptionText(product.name || '')}</option>`).join('')}
         </select>
     `;
+    container.querySelector('#my-sales-target-product-account-type')?.addEventListener('change', () => renderMySalesTargetProducts());
     container.querySelector('#my-sales-target-product-product')?.addEventListener('change', () => renderMySalesTargetProducts());
 }
 
 function renderMySalesTargetProducts() {
     const myLineId = state.session.employee?.lineId || state.session.employee?.line_id || null;
+    const accountTypeFilter = document.getElementById('my-sales-target-product-account-type')?.value || '';
     const selectedProductId = document.getElementById('my-sales-target-product-product')?.value || '';
     let products = state.products.filter((product) => product.is_company_product && (!myLineId || product.line_id === myLineId));
     if (selectedProductId) products = products.filter((product) => String(product.id) === String(selectedProductId));
     const targetsByProduct = new Map();
+    const accountTypeById = new Map(state.accounts.map((acc) => [String(acc.id), acc.account_type || '']));
     state.salesAccountProductTargets.forEach((target) => {
         if (String(target.specialist_id) !== String(state.session.employeeId)) return;
+        if (accountTypeFilter) {
+            const type = accountTypeById.get(String(target.account_id || '')) || '';
+            if (String(type) !== String(accountTypeFilter)) return;
+        }
         const key = String(target.product_id || '');
         const prev = targetsByProduct.get(key) || { target_units: 0, target_value: 0 };
         prev.target_units += Number(target.target_units || 0);
@@ -4596,7 +4615,7 @@ function renderMySalesTargetProducts() {
     const stats = document.getElementById('my-sales-target-products-stats');
     if (stats) {
         const totalTargetUnits = data.reduce((sum, row) => sum + Number(row.target_units || 0), 0);
-        const totalTargetValue = data.reduce((sum, row) => sum + Number(row.target_value || 0), 0);
+        const totalTargetValue = data.reduce((sum, row) => sum + Number(row.total_target || 0), 0);
         stats.innerHTML = `
             <div class="stat-card"><h4>Total Products</h4><div class="value">${formatNumber(ceilSalesStatNumber(data.length))}</div></div>
             <div class="stat-card"><h4>Target Units</h4><div class="value">${formatNumber(ceilSalesStatNumber(totalTargetUnits))}</div></div>

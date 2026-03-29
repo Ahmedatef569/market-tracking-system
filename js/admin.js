@@ -8668,8 +8668,10 @@ function openSalesTargetEditModal({ title, bodyHtml, submitLabel = 'Save', onSub
 async function editSalesAccountTarget(rowData) {
     const accountId = rowData.account_id || rowData.id;
     const selectedLine = document.getElementById('sales-target-account-line')?.value || getOldestSalesLine();
+    const selectedProductFilter = document.getElementById('sales-target-account-product')?.value || '';
     const lineProducts = state.products
         .filter((product) => product.is_company_product && (!selectedLine || String(product.line_id) === String(selectedLine)))
+        .filter((product) => !selectedProductFilter || String(product.id) === String(selectedProductFilter))
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     if (!lineProducts.length) {
@@ -8694,6 +8696,7 @@ async function editSalesAccountTarget(rowData) {
                 <select class="form-select" name="product_id" id="sales-target-edit-product" required>
                     ${lineProducts.map((product) => `<option value="${product.id}">${escapeOptionText(product.name || '')}</option>`).join('')}
                 </select>
+                ${selectedProductFilter ? '<small class="text-secondary">Product is locked by current table filter.</small>' : ''}
             </div>
             <div>
                 <label class="form-label">Unit Price</label>
@@ -8750,6 +8753,15 @@ async function editSalesAccountTarget(rowData) {
                 if (unitsInput) unitsInput.value = String(Number(target?.target_units || 0));
                 recalc();
             };
+            if (selectedProductFilter && productSelect) {
+                productSelect.value = String(selectedProductFilter);
+                productSelect.setAttribute('disabled', 'disabled');
+                const hiddenProduct = document.createElement('input');
+                hiddenProduct.type = 'hidden';
+                hiddenProduct.name = 'product_id';
+                hiddenProduct.value = String(selectedProductFilter);
+                modalRefs.formEl?.appendChild(hiddenProduct);
+            }
             productSelect?.addEventListener('change', applyProductTarget);
             priceInput?.addEventListener('input', recalc);
             unitsInput?.addEventListener('input', recalc);

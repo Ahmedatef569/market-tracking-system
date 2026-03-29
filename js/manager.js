@@ -4677,11 +4677,26 @@ async function openManagerSalesOrderEdit(orderId) {
 function setupTeamSalesTargetAccountFilters() {
     const container = document.getElementById('team-sales-target-accounts-filters');
     if (!container) return;
+    const managerIds = new Set(state.specialists
+        .flatMap((sp) => [sp.direct_manager_id, sp.line_manager_id])
+        .filter(Boolean)
+        .map(String));
+    const managers = state.teamMembers
+        .filter((emp) => emp.role === ROLES.MANAGER && managerIds.has(String(emp.id)))
+        .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
     const products = state.products.filter((product) => product.is_company_product).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     container.innerHTML = `
+        <select class="form-select" id="team-sales-target-account-manager">
+            <option value="">All Managers</option>
+            ${managers.map((mgr) => `<option value="${mgr.id}">${mgr.full_name}</option>`).join('')}
+        </select>
         <select class="form-select" id="team-sales-target-account-specialist">
             <option value="">All Specialists</option>
             ${state.specialists.map((sp) => `<option value="${sp.id}">${sp.first_name} ${sp.last_name}</option>`).join('')}
+        </select>
+        <select class="form-select" id="team-sales-target-account-type">
+            <option value="">All Account Types</option>
+            ${ACCOUNT_TYPES.map((type) => `<option value="${type}">${type}</option>`).join('')}
         </select>
         <select class="form-select" id="team-sales-target-account-product">
             <option value="">All Products</option>
@@ -4692,11 +4707,22 @@ function setupTeamSalesTargetAccountFilters() {
 }
 
 function renderTeamSalesTargetAccounts() {
+    const managerFilter = document.getElementById('team-sales-target-account-manager')?.value || '';
     const specialist = document.getElementById('team-sales-target-account-specialist')?.value || '';
+    const accountType = document.getElementById('team-sales-target-account-type')?.value || '';
     const productFilter = document.getElementById('team-sales-target-account-product')?.value || '';
     const teamIds = new Set(state.teamMembers.map((member) => String(member.id)));
     let accounts = state.accounts.filter((acc) => acc.status === APPROVAL_STATUS.APPROVED && teamIds.has(String(acc.owner_employee_id)));
+    if (managerFilter) {
+        accounts = accounts.filter((acc) => {
+            const owner = state.teamMembersById.get(String(acc.owner_employee_id));
+            const dm = owner?.direct_manager_id ? String(owner.direct_manager_id) : '';
+            const lm = owner?.line_manager_id ? String(owner.line_manager_id) : '';
+            return String(managerFilter) === dm || String(managerFilter) === lm;
+        });
+    }
     if (specialist) accounts = accounts.filter((acc) => String(acc.owner_employee_id) === String(specialist));
+    if (accountType) accounts = accounts.filter((acc) => String(acc.account_type || '') === String(accountType));
     if (productFilter) {
         accounts = accounts.filter((acc) => state.salesAccountProductTargets.some((target) =>
             String(target.account_id) === String(acc.id)
@@ -4707,6 +4733,7 @@ function renderTeamSalesTargetAccounts() {
     const lineIds = new Set(accounts.map((acc) => String(acc.line_id || '')).filter(Boolean));
     const lineProducts = state.products
         .filter((product) => product.is_company_product && (lineIds.size === 0 || lineIds.has(String(product.line_id || ''))))
+        .filter((product) => !productFilter || String(product.id) === String(productFilter))
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     const accountProductMap = new Map(state.salesAccountProductTargets.map((target) => [`${target.account_id}::${target.specialist_id}::${target.product_id}`, target]));
     const data = accounts.map((acc) => {
@@ -4766,15 +4793,31 @@ function renderTeamSalesTargetAccounts() {
 function setupTeamSalesTargetProductFilters() {
     const container = document.getElementById('team-sales-target-products-filters');
     if (!container) return;
+    const managerIds = new Set(state.specialists
+        .flatMap((sp) => [sp.direct_manager_id, sp.line_manager_id])
+        .filter(Boolean)
+        .map(String));
+    const managers = state.teamMembers
+        .filter((emp) => emp.role === ROLES.MANAGER && managerIds.has(String(emp.id)))
+        .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
     container.innerHTML = `
+        <select class="form-select" id="team-sales-target-product-manager">
+            <option value="">All Managers</option>
+            ${managers.map((mgr) => `<option value="${mgr.id}">${mgr.full_name}</option>`).join('')}
+        </select>
         <select class="form-select" id="team-sales-target-product-specialist">
             <option value="">All Specialists</option>
             ${state.specialists.map((sp) => `<option value="${sp.id}">${sp.first_name} ${sp.last_name}</option>`).join('')}
+        </select>
+        <select class="form-select" id="team-sales-target-product-account-type">
+            <option value="">All Account Types</option>
+            ${ACCOUNT_TYPES.map((type) => `<option value="${type}">${type}</option>`).join('')}
         </select>
         <select class="form-select" id="team-sales-target-product-product"><option value="">All Products</option></select>
     `;
 
     const refreshProductOptions = () => {
+        const managerId = document.getElementById('team-sales-target-product-manager')?.value || '';
         const specialistId = document.getElementById('team-sales-target-product-specialist')?.value || '';
         const productSelect = document.getElementById('team-sales-target-product-product');
         if (!productSelect) return;
@@ -4786,6 +4829,15 @@ function setupTeamSalesTargetProductFilters() {
                 products = products.filter((product) => String(product.line_id) === String(selected.line_id));
             }
         }
+        if (managerId) {
+            const managerSpecialists = new Set(state.specialists
+                .filter((sp) => String(sp.direct_manager_id) === String(managerId) || String(sp.line_manager_id) === String(managerId))
+                .map((sp) => String(sp.id)));
+            const allowedProductIds = new Set(state.salesAccountProductTargets
+                .filter((target) => managerSpecialists.has(String(target.specialist_id)))
+                .map((target) => String(target.product_id)));
+            products = products.filter((product) => allowedProductIds.has(String(product.id)));
+        }
         products.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         const previous = productSelect.value;
         productSelect.innerHTML = `<option value="">All Products</option>${products.map((p) => `<option value="${p.id}">${escapeOptionText(p.name || '')}</option>`).join('')}`;
@@ -4794,24 +4846,39 @@ function setupTeamSalesTargetProductFilters() {
         }
     };
 
+    container.querySelector('#team-sales-target-product-manager')?.addEventListener('change', () => {
+        refreshProductOptions();
+        renderTeamSalesTargetProducts();
+    });
     container.querySelector('#team-sales-target-product-specialist')?.addEventListener('change', () => {
         refreshProductOptions();
         renderTeamSalesTargetProducts();
     });
+    container.querySelector('#team-sales-target-product-account-type')?.addEventListener('change', () => renderTeamSalesTargetProducts());
     container.querySelector('#team-sales-target-product-product')?.addEventListener('change', () => renderTeamSalesTargetProducts());
     refreshProductOptions();
 }
 
 function renderTeamSalesTargetProducts() {
+    const managerFilter = document.getElementById('team-sales-target-product-manager')?.value || '';
     const specialist = document.getElementById('team-sales-target-product-specialist')?.value || '';
+    const accountTypeFilter = document.getElementById('team-sales-target-product-account-type')?.value || '';
     const selectedProductId = document.getElementById('team-sales-target-product-product')?.value || '';
     const teamLineIds = distinct(state.teamMembers.map((member) => member.line_id).filter(Boolean));
     let products = state.products.filter((product) => product.is_company_product && teamLineIds.includes(product.line_id));
     if (selectedProductId) products = products.filter((product) => String(product.id) === String(selectedProductId));
     let specialists = state.specialists;
+    if (managerFilter) specialists = specialists.filter((sp) => String(sp.direct_manager_id) === String(managerFilter) || String(sp.line_manager_id) === String(managerFilter));
     if (specialist) specialists = specialists.filter((sp) => String(sp.id) === String(specialist));
+    const allowedSpecialistIds = new Set(specialists.map((sp) => String(sp.id)));
+    const accountTypeById = new Map(state.accounts.map((acc) => [String(acc.id), acc.account_type || '']));
     const targetsByKey = new Map();
     state.salesAccountProductTargets.forEach((target) => {
+        if (!allowedSpecialistIds.has(String(target.specialist_id))) return;
+        if (accountTypeFilter) {
+            const type = accountTypeById.get(String(target.account_id || '')) || '';
+            if (String(type) !== String(accountTypeFilter)) return;
+        }
         const key = `${target.product_id}::${target.specialist_id}`;
         const prev = targetsByKey.get(key) || { target_units: 0, target_value: 0 };
         prev.target_units += Number(target.target_units || 0);
