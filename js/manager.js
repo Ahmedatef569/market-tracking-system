@@ -4677,6 +4677,7 @@ async function openManagerSalesOrderEdit(orderId) {
 function setupTeamSalesTargetAccountFilters() {
     const container = document.getElementById('team-sales-target-accounts-filters');
     if (!container) return;
+    const managerDisplayName = (mgr) => mgr.full_name || `${mgr.first_name || ''} ${mgr.last_name || ''}`.trim() || mgr.email || 'Unknown Manager';
     const managerIds = new Set(state.specialists
         .flatMap((sp) => [sp.direct_manager_id, sp.line_manager_id])
         .filter(Boolean)
@@ -4688,7 +4689,7 @@ function setupTeamSalesTargetAccountFilters() {
     container.innerHTML = `
         <select class="form-select" id="team-sales-target-account-manager">
             <option value="">All Managers</option>
-            ${managers.map((mgr) => `<option value="${mgr.id}">${mgr.full_name}</option>`).join('')}
+            ${managers.map((mgr) => `<option value="${mgr.id}">${escapeOptionText(managerDisplayName(mgr))}</option>`).join('')}
         </select>
         <select class="form-select" id="team-sales-target-account-specialist">
             <option value="">All Specialists</option>
@@ -4793,6 +4794,7 @@ function renderTeamSalesTargetAccounts() {
 function setupTeamSalesTargetProductFilters() {
     const container = document.getElementById('team-sales-target-products-filters');
     if (!container) return;
+    const managerDisplayName = (mgr) => mgr.full_name || `${mgr.first_name || ''} ${mgr.last_name || ''}`.trim() || mgr.email || 'Unknown Manager';
     const managerIds = new Set(state.specialists
         .flatMap((sp) => [sp.direct_manager_id, sp.line_manager_id])
         .filter(Boolean)
@@ -4803,7 +4805,7 @@ function setupTeamSalesTargetProductFilters() {
     container.innerHTML = `
         <select class="form-select" id="team-sales-target-product-manager">
             <option value="">All Managers</option>
-            ${managers.map((mgr) => `<option value="${mgr.id}">${mgr.full_name}</option>`).join('')}
+            ${managers.map((mgr) => `<option value="${mgr.id}">${escapeOptionText(managerDisplayName(mgr))}</option>`).join('')}
         </select>
         <select class="form-select" id="team-sales-target-product-specialist">
             <option value="">All Specialists</option>
