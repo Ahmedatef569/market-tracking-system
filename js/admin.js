@@ -8665,7 +8665,7 @@ function openSalesTargetEditModal({ title, bodyHtml, submitLabel = 'Save', onSub
     if (modalRefs.saveBtn) modalRefs.saveBtn.textContent = submitLabel;
     hideAlert(modalRefs.feedbackEl);
 
-    const submitHandler = async (event) => {
+    modalRefs.formEl.onsubmit = async (event) => {
         event.preventDefault();
         const payload = Object.fromEntries(new FormData(modalRefs.formEl).entries());
         try {
@@ -8675,7 +8675,6 @@ function openSalesTargetEditModal({ title, bodyHtml, submitLabel = 'Save', onSub
             showAlert(modalRefs.feedbackEl, handleError(error));
         }
     };
-    modalRefs.formEl.addEventListener('submit', submitHandler, { once: true });
     if (typeof onOpen === 'function') {
         onOpen(modalRefs);
     }
