@@ -4566,7 +4566,6 @@ function renderMySalesTargetAccounts() {
             return ({
                 title: escapeOptionText(product.name || ''),
                 headerHozAlign: 'center',
-                productGroup: true,
                 cssClass: bandClass,
                 columns: [
                     { title: 'Price', field: `p_${product.id}_price`, formatter: tableFormatters.number(2), width: 130, hozAlign: 'center', headerHozAlign: 'center', cssClass: bandClass },

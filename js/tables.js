@@ -186,7 +186,12 @@ export function enforceFrozenColumnSolid(table, field) {
         const bg = isLight ? '#ffffff' : '#0f172a';
         const fg = isLight ? '#0f172a' : '#f8fafc';
 
-        const col = table.getColumn(field);
+        let col = null;
+        try {
+            col = table.getColumn(field);
+        } catch (error) {
+            return;
+        }
         const headerEl = col?.getElement?.();
         if (headerEl) {
             headerEl.style.backgroundColor = bg;

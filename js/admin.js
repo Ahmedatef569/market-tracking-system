@@ -8402,7 +8402,6 @@ function renderSalesTargetAccounts() {
             return {
                 title: escapeOptionText(product.name || ''),
                 headerHozAlign: 'center',
-                productGroup: true,
                 cssClass: bandClass,
                 columns: [
                     { title: 'Price', field: `p_${product.id}_price`, formatter: tableFormatters.number(2), width: 130, hozAlign: 'center', headerHozAlign: 'center', cssClass: bandClass },
@@ -8660,6 +8659,7 @@ function ensureSalesTargetEditModal() {
 function openSalesTargetEditModal({ title, bodyHtml, submitLabel = 'Save', onSubmit, onOpen }) {
     const modalRefs = ensureSalesTargetEditModal();
     if (!modalRefs.modal || !modalRefs.formEl || !modalRefs.bodyEl || !modalRefs.titleEl) return;
+    modalRefs.formEl.querySelectorAll('input[data-sales-target-temp="1"]').forEach((el) => el.remove());
     modalRefs.titleEl.textContent = title || 'Edit';
     modalRefs.bodyEl.innerHTML = bodyHtml || '';
     if (modalRefs.saveBtn) modalRefs.saveBtn.textContent = submitLabel;
@@ -8696,7 +8696,7 @@ async function editSalesAccountTarget(rowData) {
         return;
     }
 
-    const defaultProductId = String(lineProducts[0].id);
+    const defaultProductId = selectedProductFilter ? String(selectedProductFilter) : '';
     const findCurrentTarget = (productId) => state.salesAccountProductTargets.find((target) =>
         String(target.account_id) === String(accountId)
         && String(target.specialist_id) === String(rowData.specialist_id)
@@ -8711,7 +8711,8 @@ async function editSalesAccountTarget(rowData) {
             <div>
                 <label class="form-label">Product</label>
                 <select class="form-select" name="product_id" id="sales-target-edit-product" required>
-                    ${lineProducts.map((product) => `<option value="${product.id}">${escapeOptionText(product.name || '')}</option>`).join('')}
+                    <option value="" ${defaultProductId ? '' : 'selected'}>Select Product</option>
+                    ${lineProducts.map((product) => `<option value="${product.id}" ${String(product.id) === String(defaultProductId) ? 'selected' : ''}>${escapeOptionText(product.name || '')}</option>`).join('')}
                 </select>
                 ${selectedProductFilter ? '<small class="text-secondary">Product is locked by current table filter.</small>' : ''}
             </div>
@@ -8777,6 +8778,7 @@ async function editSalesAccountTarget(rowData) {
                 hiddenProduct.type = 'hidden';
                 hiddenProduct.name = 'product_id';
                 hiddenProduct.value = String(selectedProductFilter);
+                hiddenProduct.setAttribute('data-sales-target-temp', '1');
                 modalRefs.formEl?.appendChild(hiddenProduct);
             }
             productSelect?.addEventListener('change', applyProductTarget);
