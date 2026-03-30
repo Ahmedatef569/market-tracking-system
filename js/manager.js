@@ -4708,6 +4708,9 @@ function setupTeamSalesTargetAccountFilters() {
 }
 
 function renderTeamSalesTargetAccounts() {
+    if (typeof state.uiTeamTargetAccountsProductsHidden === 'undefined') {
+        state.uiTeamTargetAccountsProductsHidden = false;
+    }
     const managerFilter = document.getElementById('team-sales-target-account-manager')?.value || '';
     const specialist = document.getElementById('team-sales-target-account-specialist')?.value || '';
     const accountType = document.getElementById('team-sales-target-account-type')?.value || '';
@@ -4736,6 +4739,7 @@ function renderTeamSalesTargetAccounts() {
         .filter((product) => product.is_company_product && (lineIds.size === 0 || lineIds.has(String(product.line_id || ''))))
         .filter((product) => !productFilter || String(product.id) === String(productFilter))
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const visibleProducts = state.uiTeamTargetAccountsProductsHidden ? [] : lineProducts;
     const accountProductMap = new Map(state.salesAccountProductTargets.map((target) => [`${target.account_id}::${target.specialist_id}::${target.product_id}`, target]));
     const data = accounts.map((acc) => {
         const row = {
@@ -4772,12 +4776,25 @@ function renderTeamSalesTargetAccounts() {
         { title: 'Account', field: 'account', minWidth: 220, headerFilter: 'input', frozen: true },
         { title: 'Product Specialist', field: 'specialist', minWidth: 220, headerFilter: 'input' },
         { title: 'Line', field: 'line', width: 160, headerFilter: 'input' },
-        { title: 'Account Type', field: 'account_type', width: 140, headerFilter: 'input' },
-        ...lineProducts.map((product, index) => {
+        {
+            title: `Account Type <button type="button" class="btn btn-compact btn-outline-ghost toggle-products-btn">${state.uiTeamTargetAccountsProductsHidden ? '+' : '−'}</button>`,
+            field: 'account_type',
+            width: 200,
+            headerFilter: 'input',
+            headerSort: false,
+            headerClick: (e) => {
+                if (e.target.closest('.toggle-products-btn')) {
+                    state.uiTeamTargetAccountsProductsHidden = !state.uiTeamTargetAccountsProductsHidden;
+                    renderTeamSalesTargetAccounts();
+                }
+            }
+        },
+        ...visibleProducts.map((product, index) => {
             const bandClass = index % 2 === 0 ? 'target-band-alt' : '';
             return {
                 title: escapeOptionText(product.name || ''),
                 headerHozAlign: 'center',
+                productGroup: true,
                 cssClass: bandClass,
                 columns: [
                     { title: 'Price', field: `p_${product.id}_price`, formatter: tableFormatters.number(2), width: 130, hozAlign: 'center', headerHozAlign: 'center', cssClass: bandClass },
@@ -4786,7 +4803,7 @@ function renderTeamSalesTargetAccounts() {
                 ]
             };
         }),
-        { title: 'Target Value', field: 'target_value', formatter: tableFormatters.number(2), width: 170 }
+        { title: 'Total Value', field: 'target_value', formatter: tableFormatters.number(2), width: 170 }
     ], data, { height: 500, renderHorizontal: 'basic', layout: 'fitDataFill' });
     enforceFrozenColumnSolid(state.tables.teamSalesTargetAccounts, 'account');
 }
