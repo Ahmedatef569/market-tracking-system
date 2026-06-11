@@ -2732,31 +2732,65 @@ async function handleAccountSubmit(event) {
             secondary_line_id: secondaryId ? secondaryLineId : null,
             tertiary_line_id: tertiaryId ? tertiaryLineId : null,
             address: payload.address?.trim() || null,
-            governorate: payload.governorate?.trim() || null,
-            status: APPROVAL_STATUS.APPROVED,
-            admin_id: state.session.employeeId,
-            created_by: state.session.employeeId,
-            approved_at: new Date().toISOString()
+            governorate: payload.governorate?.trim() || null
         };
 
+        let transferResult = null;
         if (payload.account_id) {
-            await handleSupabase(
-                supabase
-                    .from('accounts')
-                    .update(record)
-                    .eq('id', payload.account_id),
-                'update account'
-            );
+            const ownerChanged = String(existingAccount?.owner_employee_id || '') !== String(payload.owner_id);
+            if (ownerChanged) {
+                transferResult = await handleSupabase(
+                    supabase.rpc('transfer_account_history', {
+                        p_account_id: payload.account_id,
+                        p_new_owner_id: payload.owner_id,
+                        p_new_line_id: lineId,
+                        p_name: trimmedName,
+                        p_account_type: payload.account_type,
+                        p_secondary_employee_id: secondaryId,
+                        p_secondary_line_id: secondaryId ? secondaryLineId : null,
+                        p_tertiary_employee_id: tertiaryId,
+                        p_tertiary_line_id: tertiaryId ? tertiaryLineId : null,
+                        p_address: payload.address?.trim() || null,
+                        p_governorate: payload.governorate?.trim() || null
+                    }),
+                    'transfer account history'
+                );
+            } else {
+                await handleSupabase(
+                    supabase
+                        .from('accounts')
+                        .update(record)
+                        .eq('id', payload.account_id),
+                    'update account'
+                );
+            }
         } else {
             await handleSupabase(
                 supabase
                     .from('accounts')
-                    .insert(record),
+                    .insert({
+                        ...record,
+                        status: APPROVAL_STATUS.APPROVED,
+                        admin_id: state.session.employeeId,
+                        created_by: state.session.employeeId,
+                        approved_at: new Date().toISOString()
+                    }),
                 'insert account'
             );
         }
 
-        await loadAccounts();
+        await Promise.all([
+            loadAccounts(),
+            transferResult?.transferred ? loadCases() : Promise.resolve(),
+            transferResult?.transferred ? loadSalesExpansionData() : Promise.resolve()
+        ]);
+        if (transferResult?.transferred) {
+            buildApprovalsDataset();
+            renderCasesSection();
+            renderSalesDataSection();
+            renderSalesTargetSection();
+            renderSalesDashboardSection();
+        }
         form.reset();
         form._toggleAccountSecondary?.(false);
         form._toggleAccountTertiary?.(false);
@@ -2765,7 +2799,10 @@ async function handleAccountSubmit(event) {
         state.autocompletes.accountSecondary?.update(specialistItems);
         state.autocompletes.accountTertiary?.update(specialistItems);
         renderAccountsSection({ refreshFilters: true });
-        showAlert(feedback, 'Account saved successfully.', 'success');
+        const successMessage = transferResult?.transferred
+            ? `Account transferred successfully. Updated ${Number(transferResult.cases_updated || 0)} cases, ${Number(transferResult.sales_orders_updated || 0)} sales orders, and ${Number(transferResult.account_product_targets_updated || 0)} account-product targets.`
+            : 'Account saved successfully.';
+        showAlert(feedback, successMessage, 'success');
         closeFormModal();
     } catch (error) {
         showAlert(feedback, handleError(error));

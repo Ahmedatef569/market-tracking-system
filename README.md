@@ -67,6 +67,9 @@ Key constraints:
 - Accounts/doctors unique per specialist (lower(name), owner_employee_id).
 - Cases track `total_company_units`, `total_competitor_units` via trigger `refresh_case_unit_totals`.
 - Views `v_case_details`, `v_doctor_details`, `v_account_details` for convenient display joins.
+- Admin primary-account-owner changes use the transactional `transfer_account_history` RPC from
+  `migrations/transfer_account_history.sql`. It moves matching historical cases, sales orders, and
+  account-specific targets to the new specialist without changing approval statuses or values.
 
 ## Frontend Structure per Page
 
@@ -117,7 +120,9 @@ Each page has:
 
 ## Deployment / Dev Notes
 
-- Requires Supabase project with schema in `schema.sql`. Run entire file in Supabase SQL console.
+- Requires Supabase project with the base and sales SQL files applied in this order:
+  `schema.sql`, `sales_schema.sql`, `target_sales_schema.sql`, `sales_reorder_schema.sql`, then
+  `migrations/transfer_account_history.sql`.
 - Static frontend can be served via any static server (e.g., `npx serve .`).
 - Credentials seeded: admin/admin123 (Marketing Manager user).
 - No build step; ensure browsers support ES modules.
